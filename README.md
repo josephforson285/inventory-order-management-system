@@ -121,9 +121,11 @@ constraint is what makes the table a complete stock history rather than merely a
 Five choices shape everything else:
 
 **The inventory log is the source of truth; `stock_quantity` is a cache.** Stock is a *balance*
-over an immutable ledger of movements, exactly as an accounting system treats an account.
-Because the cache can drift, a reconciliation query proves it never has.
-→ [logical model §1](docs/04-logical-model.md)
+over an immutable ledger of movements, exactly as an accounting system treats an account. So the
+application **writes to the ledger** — `INSERT INTO inventory_logs` — and a trigger applies the
+movement to stock. Writing stock directly is rejected. That makes the audit trail structurally
+unavoidable rather than merely conventional.
+→ [logical model §1](docs/04-logical-model.md), [ADR 0002](docs/adr/0002-ledger-is-the-write-path.md)
 
 **Storing the price on the order line is not redundancy.** `order_details.unit_price` records
 what the customer was charged on that date, which is a *different fact* from what the product
@@ -158,7 +160,8 @@ presented as enforced. → [traceability matrix](docs/07-traceability-matrix.md)
 | 08 — Performance | *planned* — `EXPLAIN ANALYZE` before and after, at ~100k orders |
 | [09 — Requirements coverage](docs/09-requirements-coverage.md) | Every requirement → the artefact satisfying it |
 | [10 — Future architecture](docs/10-future-architecture.md) | The 19-table production system, scoped out deliberately, with migration paths |
-| [ADR 0001](docs/adr/0001-scope-spec-plus.md) | Scope decision and its reasoning |
+| [ADR 0001](docs/adr/0001-scope-spec-plus.md) | Scope decision — spec-plus over production-grade |
+| [ADR 0002](docs/adr/0002-ledger-is-the-write-path.md) | Why stock is written to the ledger, not to the product row |
 
 ## Running it
 
@@ -177,7 +180,7 @@ system from nothing, which is how the tests work.
 ```
 sql/
   01_schema.sql          ✅  tables, constraints, indexes
-  02_triggers.sql        ○   logging, immutability, total maintenance, tier updates
+  02_triggers.sql        ✅  ledger application, immutability, totals, tier updates
   03_reference_data.sql  ○   categories, tiers, discount bands
   04_procedures.sql      ○   sp_place_order, sp_cancel_order, sp_replenish_stock
   05_views.sql           ○   vw_order_summary, vw_low_stock, vw_customer_spending
@@ -186,7 +189,7 @@ sql/
   08_reports.sql         ○   Phase 3 reporting queries
   09_reconciliation.sql  ○   proofs that every cached value agrees with its source
   10_grants.sql          ○   revoke UPDATE/DELETE on inventory_logs
-tests/                   ○   negative tests: every constraint rejects what it should
+tests/                   ◐   negative tests: every constraint and trigger rejects what it should
 ```
 
 ## Status
@@ -195,12 +198,20 @@ Analysis and modelling are complete and agreed. Implementation has begun.
 
 | | Progress |
 |---|---|
-| Documentation | 9 of 11 documents |
-| Schema | ✅ built, idempotent, 12 negative tests passing |
-| Rules implemented | 12 of 40 fully, 8 partially — see the [matrix](docs/07-traceability-matrix.md) |
-| SQL scripts | 1 of 10 |
+| Documentation | 9 of 11 numbered documents, plus 2 ADRs |
+| Schema | ✅ built, idempotent, verified |
+| Triggers | ✅ 12 triggers + 1 helper routine, verified |
+| Rules implemented | 20 of 40 fully, 9 partially — see the [matrix](docs/07-traceability-matrix.md) |
+| SQL scripts | 2 of 10 |
 
-The schema has been verified against MySQL 8.4.10: it builds from empty, re-runs cleanly, and
-every `CHECK` constraint has been shown to reject what it forbids — including the sign of a stock
-movement disagreeing with its reason code, a `SALE` without an order, a `REPLENISHMENT` with one,
-and case-differing duplicate emails.
+Verified against MySQL 8.4.10. The schema builds from empty and re-runs cleanly, and every
+`CHECK` constraint has been shown to reject what it forbids — a stock movement whose sign
+disagrees with its reason code, a `SALE` without an order, a `REPLENISHMENT` with one, and
+case-differing duplicate emails.
+
+The trigger layer is verified end to end. Stock cannot be written directly or loaded at product
+creation; the ledger and its cached balance agree exactly across a mixed sequence of
+`INITIAL_LOAD`, `SALE`, and `REPLENISHMENT` movements; the append-only and immutability rules
+reject all four forbidden operations; and the tier cascade promotes a customer to Silver on a
+large order and demotes them again when it is cancelled — three levels of trigger, each firing
+the next.

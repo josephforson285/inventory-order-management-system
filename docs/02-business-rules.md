@@ -39,13 +39,13 @@ implying they are enforced, is deliberate.
 
 | # | Rule | Owner | Type | Traces to |
 |---|---|---|---|---|
-| I-01 | Stock may never fall below zero | `UNSIGNED` + `CHECK (stock_quantity >= 0)`, with a pre-check in `sp_place_order` for a readable error | `CONSTRAINT` | Phase 2 |
-| I-02 | Every change to `products.stock_quantity` writes exactly one `inventory_logs` row | `AFTER UPDATE` trigger on `products` | `TRIGGER` | Phase 2 |
+| I-01 | Stock may never fall below zero | `UNSIGNED` + `CHECK (stock_quantity >= 0)`; `trg_inventory_logs_before_insert` rejects the movement first, with an error naming this rule | `CONSTRAINT` | Phase 2 |
+| I-02 | Stock cannot change except by inserting into `inventory_logs` — the ledger insert applies the movement to `products` | `trg_inventory_logs_after_insert`, with `trg_products_before_insert` and `trg_products_before_update` as guards. See [ADR 0002](adr/0002-ledger-is-the-write-path.md) | `TRIGGER` | Phase 2 |
 | I-03 | `inventory_logs` is append-only | `BEFORE UPDATE` / `BEFORE DELETE` triggers that `SIGNAL`, plus revoked `UPDATE`/`DELETE` grants | `TRIGGER` + `PRIVILEGE` | Phase 2 |
 | I-04 | Every log row carries a reason code | `movement_type NOT NULL ENUM('SALE','RETURN','REPLENISHMENT','ADJUSTMENT','CANCELLATION','INITIAL_LOAD')` | `CONSTRAINT` | Phase 2 |
 | I-05 | The sign of `quantity_change` must agree with `movement_type` — a `SALE` cannot be positive, a `REPLENISHMENT` cannot be negative | `CHECK` with a `CASE` expression | `CONSTRAINT` | Phase 2 |
 | I-06 | A movement of zero is invalid | `CHECK (quantity_change <> 0)` | `CONSTRAINT` | Phase 2 |
-| I-07 | Each log row records the resulting balance, not only the delta | `balance_after`, written by the I-02 trigger | `TRIGGER` | Phase 2 |
+| I-07 | Each log row records the resulting balance, not only the delta | `balance_after`, computed by `trg_inventory_logs_before_insert` and then copied into `products` | `TRIGGER` | Phase 2 |
 | I-08 | `products.stock_quantity` always equals `SUM(inventory_logs.quantity_change)` for that product | `sql/09_reconciliation.sql` + test | `VERIFIED` | Phase 2 |
 | I-09 | A stock change and its log row commit or fail together | `ENGINE=InnoDB` + explicit transaction in the procedure | `CONSTRAINT` | Phase 2 |
 | I-10 | Concurrent orders cannot oversell the same unit | `SELECT … FOR UPDATE` on the product rows, ordered by `product_id`; I-01 as backstop | `PROCEDURE` + `CONSTRAINT` | Phase 2 |
@@ -53,18 +53,28 @@ implying they are enforced, is deliberate.
 | I-12 | An order is rejected **in full** if any line has insufficient stock — no partial fulfilment | `sp_place_order` validates every line before any mutation, then `ROLLBACK` | `PROCEDURE` | Phase 2 |
 | I-13 | Replenishment triggers when `stock_quantity <= reorder_level` and tops stock up to `target_stock_level` | `sp_replenish_stock`, scheduled by `EVENT` | `PROCEDURE` | Phase 4 |
 | I-14 | `target_stock_level` must exceed `reorder_level` | `CHECK (target_stock_level > reorder_level)` | `CONSTRAINT` | Phase 4 |
-| I-15 | No stock may exist without a corresponding log entry — seed stock is loaded as `INITIAL_LOAD` | Seed scripts write through the same `UPDATE` path as everything else | `PROCEDURE` | Phase 2 |
+| I-15 | No stock may exist without a corresponding log entry — opening stock is loaded as `INITIAL_LOAD` | `trg_products_before_insert` rejects any product created with non-zero stock | `TRIGGER` | Phase 2 |
 
 ### Notes on contested rules
 
-**I-02 — why the trigger owns logging, not the procedure.**
-Writing the log row inside `sp_place_order` reads more clearly, but it means anyone who
-updates `products.stock_quantity` directly — a manual fix in Workbench, a data migration —
-breaks the audit trail silently. A trigger is the only mechanism that cannot be bypassed.
+**I-02 — why the ledger is the write path, not the product row.**
+The obvious design has the application update `products.stock_quantity` while a trigger records
+what happened. It cannot work. A trigger sees only the row before and the row after, so a drop
+from 100 to 88 is indistinguishable between a sale and a damaged-goods write-off — yet the
+`movement_type` it must supply determines whether an `order_id` is *required* or *forbidden*
+(`chk_inventory_logs_order_presence`). A wrong guess does not produce a slightly inaccurate audit
+entry; it fails the customer's order.
 
-This carries a binding consequence: **stored procedures must never insert into
-`inventory_logs`.** Any procedure that does will double-log. Procedures own the *business
-transaction*; the trigger owns the *audit side effect*. Separate concerns, single owners.
+Inverting the direction makes the intent part of the write. Stock is changed by inserting into
+`inventory_logs`, and `trg_inventory_logs_after_insert` copies the resulting balance into
+`products`. Two guards make that the only path: `trg_products_before_insert` rejects a product
+created with opening stock, and `trg_products_before_update` rejects any direct write to
+`stock_quantity`.
+
+The binding consequence inverts too: **stored procedures insert into `inventory_logs` and never
+update `products.stock_quantity` themselves.** A procedure that does both would double-count.
+Full reasoning, and the two options rejected along the way, are in
+[ADR 0002](adr/0002-ledger-is-the-write-path.md).
 
 **I-08 — why this is verified rather than enforced.**
 The rule compares a scalar column against an aggregate over another table. No `CHECK`
@@ -73,6 +83,11 @@ entire log on every write. The correct engineering answer is a reconciliation qu
 test, not a constraint that cannot exist. I-07's `balance_after` gives a second, cheaper
 check: the newest log row's `balance_after` must equal the product's current
 `stock_quantity`.
+
+Since [ADR 0002](adr/0002-ledger-is-the-write-path.md), `stock_quantity` is *copied* from
+`balance_after` rather than calculated independently, so the two agree **by construction**. The
+reconciliation query therefore verifies a structural property rather than hoping that two
+separate calculations arrived at the same answer.
 
 **I-12 — deviation from the source document.**
 The source requirements do not state what happens when stock is insufficient. All-or-nothing
