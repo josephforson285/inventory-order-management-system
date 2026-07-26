@@ -46,11 +46,25 @@ ON DUPLICATE KEY UPDATE description = VALUES(description);
 --  The lowest band MUST start at 0 (rule T-04) so that a customer who has never
 --  ordered still resolves to a tier rather than to none.
 --
---  IMPORTANT — these figures are invented. The requirements say only
---  "e.g. Bronze, Silver, Gold" and supply no thresholds. See assumption A-13:
---  once 07_seed.sql exists these should be re-derived from actual spend
---  percentiles, because a scheme where 98% of customers are Bronze segments
---  nothing. Revising them is an UPDATE here, not a migration.
+--  IMPORTANT — THESE FIGURES ARE OVERRIDDEN BY 07_seed.sql.
+--
+--  The requirements say only "e.g. Bronze, Silver, Gold" and supply no
+--  thresholds, so the numbers below were invented (assumption A-13). Against the
+--  seeded population they turned out to be badly wrong: with a median lifetime
+--  spend near 430,000, a Gold floor of 10,000 files 99.1% of customers as Gold,
+--  which segments nothing.
+--
+--  07_seed.sql therefore re-derives the bands from the data it generates —
+--  bottom 60% Bronze, next 30% Silver, top 10% Gold — and refreshes every cached
+--  customers.tier_id against them. AFTER A FULL BUILD THE LIVE VALUES WILL NOT
+--  MATCH THE FIGURES BELOW, and that is intended, not drift.
+--
+--  These round numbers are kept here on purpose: tests/ works with small
+--  scenarios where a Gold threshold of 10,000 is the sensible scale, and those
+--  suites run on 01-03 without the seed.
+--
+--  That correction was three UPDATE statements rather than a schema migration,
+--  which is the whole argument for holding business rules as data.
 -- =============================================================================
 INSERT INTO customer_tiers (tier_name, min_spend, max_spend) VALUES
   ('Bronze',      0.00,   2000.00),
