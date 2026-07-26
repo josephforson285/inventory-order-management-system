@@ -72,12 +72,17 @@ rules I-08, O-11, and T-06.
 |---|---|---|
 | View: customer name, order date, total amount, item count per order | [`vw_order_summary`](../sql/05_views.sql) | ✅ |
 | View: products low on stock needing reorder | [`vw_low_stock`](../sql/05_views.sql) | ✅ |
-| Optimise queries for growth in customers, orders, and products | 12 indexes, each derived from a named query ([physical design §5](05-physical-design.md)). Seed data now exists at full volume — 500 products, 10,000 customers, 100,000 orders, 250,000 details, 250,513 ledger rows — with `EXPLAIN ANALYZE` evidence still to be written up | ◐ |
+| Optimise queries for growth in customers, orders, and products | 12 indexes, each derived from a named query ([physical design §5](05-physical-design.md)), then **measured** at full volume in [08-performance](08-performance.md): up to 700× on the covering indexes, with the write and storage costs measured too — and two of the original predictions refuted | ✅ |
 
-The optimisation requirement is the one most often answered by assertion. It is addressed here
-with `EXPLAIN ANALYZE` output before and after indexing, at realistic volume — 500 products,
-10,000 customers, 100,000 orders, ~300,000 order details — because an index strategy proven on
-forty rows proves nothing.
+The optimisation requirement is the one most often answered by assertion, so it is answered here
+with measurements: [08-performance](08-performance.md) carries `EXPLAIN ANALYZE` output with and
+without each index, at 500 products, 10,000 customers, 100,000 orders, 250,000 order details and
+250,513 ledger rows. An index strategy proven on forty rows proves nothing.
+
+The measurements cut both ways, which is the point of taking them. The covering indexes reach
+700×, and two indexes that had been argued for on paper turned out to be worth a quarter of a
+millisecond and nothing at all respectively. The costs are measured too — indexes add 65% to
+insert time and occupy more space than the data on every large table.
 
 ---
 

@@ -104,19 +104,20 @@ per entry in every secondary index.
 `INT UNSIGNED` ceilings at 4,294,967,295 rows. Against the seed volumes below — and even at
 100,000 orders per year, indefinitely — that is not a limit this system will approach.
 
-| Table | Type | Ceiling | Seed volume | Rationale |
+| Table | Type | Ceiling | Actual seeded rows | Rationale |
 |---|---|---|---|---|
 | `customer_tiers` | `TINYINT UNSIGNED` | 255 | 3 | Three tiers; 255 is already generous |
-| `categories` | `SMALLINT UNSIGNED` | 65,535 | 20 | |
-| `discount_rules` | `SMALLINT UNSIGNED` | 65,535 | 4 | |
+| `categories` | `SMALLINT UNSIGNED` | 65,535 | 8 | |
+| `discount_rules` | `SMALLINT UNSIGNED` | 65,535 | 3 | |
 | `products` | `INT UNSIGNED` | 4.29 bn | 500 | |
 | `customers` | `INT UNSIGNED` | 4.29 bn | 10,000 | |
 | `orders` | `INT UNSIGNED` | 4.29 bn | 100,000 | |
-| `order_details` | `INT UNSIGNED` | 4.29 bn | ~300,000 | ~3 details per order |
-| `inventory_logs` | `INT UNSIGNED` | 4.29 bn | ~400,000 | Fastest-growing table; append-only, never purged |
+| `order_details` | `INT UNSIGNED` | 4.29 bn | 250,000 | 2.5 details per order |
+| `inventory_logs` | `INT UNSIGNED` | 4.29 bn | 250,513 | Fastest-growing table; append-only, never purged |
 
-`inventory_logs` is the one to watch, since it is never pruned. At 400,000 rows per year it has
-roughly ten thousand years of headroom. If that assumption ever changes, the migration path is
+`inventory_logs` is the one to watch, since it is never pruned. The seed produced 250,513 rows
+for 100,000 orders — roughly 2.5 movements per order — so at that rate `INT UNSIGNED` gives some
+seventeen thousand years of headroom. If that assumption ever changes, the migration path is
 a single `ALTER TABLE` — deferring it costs nothing today, whereas over-sizing every index
 costs something on every write forever.
 
