@@ -158,7 +158,7 @@ CREATE TABLE products (
   -- column is what gets indexed. VIRTUAL => no row storage; the value is
   -- materialised only inside idx_products_needs_reorder.
   -- See docs/05-physical-design.md §5.1.
-  needs_reorder      BOOLEAN GENERATED ALWAYS AS (stock_quantity <= reorder_level) VIRTUAL
+  needs_reorder      BOOLEAN GENERATED ALWAYS AS (stock_quantity <= reorder_level) VIRTUAL NOT NULL
                      COMMENT 'Phase 3 low-stock flag. Indexed; TRUE is rare, hence selective',
 
   created_at         DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -234,7 +234,7 @@ CREATE TABLE orders (
                   COMMENT 'CACHE of SUM(order_details.discount_amount) - maintained by O-10, proven by O-11',
   -- Arithmetic within one row, so the engine owns it and no trigger can get it
   -- wrong. gross/discount are aggregates across rows and cannot be generated.
-  net_amount      DECIMAL(12,2) GENERATED ALWAYS AS (gross_amount - discount_amount) STORED
+  net_amount      DECIMAL(12,2) GENERATED ALWAYS AS (gross_amount - discount_amount) STORED NOT NULL
                   COMMENT 'Engine-owned; cannot drift',
 
   cancelled_at    DATETIME          NULL,
@@ -294,12 +294,12 @@ CREATE TABLE order_details (
   -- rule O-09: all three follow arithmetically from the row's own values, so
   -- the engine owns them and no reconciliation query is needed.
   gross_amount             DECIMAL(14,2)
-                           GENERATED ALWAYS AS (quantity * unit_price) STORED,
+                           GENERATED ALWAYS AS (quantity * unit_price) STORED NOT NULL,
   discount_amount          DECIMAL(14,2)
-                           GENERATED ALWAYS AS (ROUND(gross_amount * discount_percent_applied / 100, 2)) STORED
+                           GENERATED ALWAYS AS (ROUND(gross_amount * discount_percent_applied / 100, 2)) STORED NOT NULL
                            COMMENT 'Rounded per detail row, not per order, so totals reconcile exactly',
   net_amount               DECIMAL(14,2)
-                           GENERATED ALWAYS AS (gross_amount - discount_amount) STORED,
+                           GENERATED ALWAYS AS (gross_amount - discount_amount) STORED NOT NULL,
 
   created_at               DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP,
 

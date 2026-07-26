@@ -162,7 +162,7 @@ by calling a procedure that runs with its definer's rights. → [`sql/10_grants.
 | [03 — Conceptual model](docs/03-conceptual-model.md) | 8 entities, relationships in business language |
 | [04 — Logical model](docs/04-logical-model.md) | Attributes, keys, 3NF walkthrough, defended denormalisations |
 | [05 — Physical design](docs/05-physical-design.md) | Engine, charset, type rationale, query-driven index strategy |
-| 06 — Data dictionary | *planned* |
+| [06 — Data dictionary](docs/06-data-dictionary.md) | Every column, its type, and why it exists; generated from the built database |
 | [07 — Traceability matrix](docs/07-traceability-matrix.md) | All 40 rules → their enforcement objects |
 | [08 — Performance](docs/08-performance.md) | `EXPLAIN ANALYZE` measured at full volume, including what the indexes cost and one prediction they refuted |
 | [09 — Requirements coverage](docs/09-requirements-coverage.md) | Every requirement → the artefact satisfying it |
@@ -236,7 +236,7 @@ Analysis and modelling are complete and agreed. Implementation has begun.
 
 | | Progress |
 |---|---|
-| Documentation | 10 of 11 numbered documents, plus 2 ADRs |
+| Documentation | **11 of 11** numbered documents, plus 2 ADRs |
 | Schema | ✅ built, idempotent, verified |
 | Triggers | ✅ 12 triggers + 1 helper routine, verified |
 | Procedures | ✅ `sp_place_order`, `sp_cancel_order`, `sp_replenish_stock`, verified |
