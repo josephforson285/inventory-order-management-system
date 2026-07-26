@@ -28,7 +28,7 @@ rule it broke — `Rule I-03: inventory_logs is append-only` rather than `produc
 | I-10 | `SELECT … FOR UPDATE` in `trg_inventory_logs_before_insert` (any caller); explicit cursor loop in ascending `product_id` order in `sp_place_order` and `sp_cancel_order` (deadlock avoidance) | `PROCEDURE` + `TRIGGER` | `02_triggers.sql` / `04_procedures.sql` | ✅ |
 | I-11 | `sp_cancel_order` writes `CANCELLATION` movements; stock returns via the ledger | `PROCEDURE` | `04_procedures.sql` | ✅ |
 | I-12 | `sp_place_order` locks, validates every line, then writes — nothing mutates until all lines are satisfiable | `PROCEDURE` | `04_procedures.sql` | ✅ |
-| I-13 | `sp_replenish_stock` tops up to `target_stock_level`; scheduling awaits `ev_replenish_stock` | `PROCEDURE` | `04_procedures.sql` / `06_events.sql` | ◐ |
+| I-13 | `sp_replenish_stock` tops up to `target_stock_level`, scheduled hourly by `ev_replenish_stock` | `PROCEDURE` | `04_procedures.sql` / `06_events.sql` | ✅ |
 | I-14 | `chk_products_target_above_reorder` | `CONSTRAINT` | `01_schema.sql` | ✅ |
 | I-15 | `trg_products_before_insert` — a product cannot be created holding stock | `TRIGGER` | `02_triggers.sql` | ✅ |
 
@@ -94,24 +94,23 @@ cancelled.
 
 | Status | Count |
 |---|---|
-| ✅ Implemented and verified | 32 |
-| ◐ Partially implemented | 8 |
+| ✅ Implemented and verified | 33 |
+| ◐ Partially implemented | 7 |
 | ○ Designed, not yet built | 0 |
 | **Total** | **40** |
 
 Every rule has a named owner. Nothing is unassigned, and no object exists without a rule to
 justify it.
 
-**Every rule now has a working implementation.** The 32 complete rules cover everything
+**Every rule now has a working implementation.** The 33 complete rules cover everything
 enforceable declaratively — constraints, types, generated columns — plus the entire trigger,
 stored-procedure, and view layer.
 
-The 8 partial rules are each waiting on exactly one artefact:
+The 7 partial rules are each waiting on exactly one artefact:
 
 | Waiting on | Rules |
 |---|---|
 | A privilege grant (`10_grants.sql`) | I-03 |
-| A scheduled event (`06_events.sql`) | I-13 |
 | A reusable reconciliation query (`09_reconciliation.sql`) | I-08, O-02, O-11, D-03, T-01, T-06 |
 
 Every one of those six reconciliation rules is already *asserted by a test* and passing. What is

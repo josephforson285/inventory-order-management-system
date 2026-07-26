@@ -55,12 +55,12 @@ the query indexable. See [physical design §5.1](05-physical-design.md).
 
 | Requirement | Satisfied by | Status |
 |---|---|---|
-| Replenish stock for products below the reorder point | `sp_replenish_stock`, topping up to `target_stock_level` (rule I-13). Self-limiting, so safe to schedule freely | ◐ |
+| Replenish stock for products below the reorder point | `sp_replenish_stock`, topping up to `target_stock_level`, scheduled hourly by `ev_replenish_stock` (rule I-13). Self-limiting, so safe to schedule freely | ✅ |
 | Ensure the inventory log reflects replenishment | Structurally unavoidable — a replenishment *is* a `REPLENISHMENT` ledger row, and stock follows from it | ✅ |
 | Automate stock updates after an order | Trigger-driven: the procedure writes the ledger, the trigger moves the stock. The procedure never touches `stock_quantity` | ✅ |
 | Automate total amount calculation | `trg_order_details_after_insert` + the generated `net_amount` | ✅ |
 | Automate customer tier categorisation | `trg_orders_after_insert` / `trg_orders_after_update` call `sp_refresh_customer_tier` (rule T-05). Verified: promotion on a large order, demotion on cancellation | ✅ |
-| Minimise manual work while ensuring accuracy | `ev_replenish_stock` scheduled event, plus the reconciliation suite that proves the automation has not drifted | ○ |
+| Minimise manual work while ensuring accuracy | `ev_replenish_stock` runs hourly with no human involvement; the three reconciliation checks prove the automation has not drifted, and pass on 100,000 seeded orders | ✅ |
 
 *"Ensuring accuracy"* is the part usually left unaddressed. Automation that silently drifts is
 worse than manual work, which is why every cached value carries a reconciliation query:
@@ -72,7 +72,7 @@ rules I-08, O-11, and T-06.
 |---|---|---|
 | View: customer name, order date, total amount, item count per order | [`vw_order_summary`](../sql/05_views.sql) | ✅ |
 | View: products low on stock needing reorder | [`vw_low_stock`](../sql/05_views.sql) | ✅ |
-| Optimise queries for growth in customers, orders, and products | 12 indexes, each derived from a named query ([physical design §5](05-physical-design.md)), measured against ~100k seeded orders | ◐ |
+| Optimise queries for growth in customers, orders, and products | 12 indexes, each derived from a named query ([physical design §5](05-physical-design.md)). Seed data now exists at full volume — 500 products, 10,000 customers, 100,000 orders, 250,000 details, 250,513 ledger rows — with `EXPLAIN ANALYZE` evidence still to be written up | ◐ |
 
 The optimisation requirement is the one most often answered by assertion. It is addressed here
 with `EXPLAIN ANALYZE` output before and after indexing, at realistic volume — 500 products,

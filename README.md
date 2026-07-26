@@ -176,6 +176,8 @@ mysql < sql/02_triggers.sql        # automation and immutability
 mysql < sql/03_reference_data.sql  # tiers, categories, discount bands
 mysql < sql/04_procedures.sql      # the business API
 mysql < sql/05_views.sql           # reporting surface
+mysql < sql/06_events.sql          # hourly replenishment
+mysql < sql/07_seed.sql            # 100k orders — takes about 90 seconds
 ```
 
 Placing an order, once products and a customer exist:
@@ -204,8 +206,8 @@ sql/
   03_reference_data.sql  ✅  categories, tiers, discount bands
   04_procedures.sql      ✅  sp_place_order, sp_cancel_order, sp_replenish_stock
   05_views.sql           ✅  vw_order_summary, vw_low_stock, vw_customer_spending
-  06_events.sql          ○   ev_replenish_stock
-  07_seed.sql            ○   500 products, 10k customers, 100k orders
+  06_events.sql          ✅  ev_replenish_stock, hourly
+  07_seed.sql            ✅  500 products, 10k customers, 100k orders
   08_reports.sql         ○   Phase 3 reporting queries
   09_reconciliation.sql  ○   proofs that every cached value agrees with its source
   10_grants.sql          ○   revoke UPDATE/DELETE on inventory_logs
@@ -223,8 +225,9 @@ Analysis and modelling are complete and agreed. Implementation has begun.
 | Triggers | ✅ 12 triggers + 1 helper routine, verified |
 | Procedures | ✅ `sp_place_order`, `sp_cancel_order`, `sp_replenish_stock`, verified |
 | Views | ✅ 3 views, verified |
-| Rules implemented | 32 of 40 fully, 8 partially, 0 untouched — see the [matrix](docs/07-traceability-matrix.md) |
-| SQL scripts | 5 of 10 |
+| Seed data | ✅ 100,000 orders / 250,513 ledger rows, loaded in 91s with every trigger enabled |
+| Rules implemented | 33 of 40 fully, 7 partially, 0 untouched — see the [matrix](docs/07-traceability-matrix.md) |
+| SQL scripts | 7 of 10 |
 
 Verified against MySQL 8.4.10. The schema builds from empty and re-runs cleanly, and every
 `CHECK` constraint has been shown to reject what it forbids — a stock movement whose sign

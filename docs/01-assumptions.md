@@ -77,11 +77,34 @@ Provisional tier bands for A-13:
 | Silver | 2,000.00 | 10,000.00 |
 | Gold | 10,000.00 | `NULL` (unbounded) |
 
-These are placeholders chosen to produce a sensible spread, not derived from anything. Once the
-seed data exists they should be re-derived from actual spend percentiles so the three tiers
-contain meaningful populations rather than arbitrary ones — a tier scheme where 98% of customers
-are Bronze segments nothing. Because the thresholds live in a table rather than in a `CASE`
-expression, revising them is an `UPDATE`, not a migration.
+These are placeholders chosen to produce a sensible spread, not derived from anything. They
+remain in [`03_reference_data.sql`](../sql/03_reference_data.sql) because they suit the
+small-scale scenarios in `tests/`.
+
+### Status: discharged for the seeded population
+
+This assumption has since been tested against real data, and it was wrong — informatively so.
+With 100,000 orders loaded, actual lifetime spend ran from 2,065 to 1,181,678 with a median near
+430,000. Against that population a Gold floor of 10,000 filed **99.1% of customers as Gold**:
+
+| | Invented thresholds | Derived from percentiles |
+|---|---|---|
+| Bronze | 0 | 6,000 |
+| Silver | 90 | 2,997 |
+| Gold | 9,910 | 1,003 |
+
+[`07_seed.sql`](../sql/07_seed.sql) now re-derives the bands from the data it generated — bottom
+60% Bronze, next 30% Silver, top 10% Gold — and refreshes every cached `customers.tier_id`
+against them.
+
+Two things worth drawing out of that:
+
+- **This is the argument for business-rules-as-data, demonstrated rather than asserted.**
+  Correcting a materially wrong tier scheme was three `UPDATE` statements. Had the thresholds
+  been a `CASE` expression inside a view, it would have been a code change and a redeployment.
+- **Moving the bands invalidated every cached tier.** The caches had to be recomputed, and had
+  that step been forgotten, rule T-06's reconciliation would have caught it rather than the
+  error sitting unnoticed in the reports. That is precisely why a cache is paired with a proof.
 
 **On A-11** — the requirements say *"bulk discounts based on quantity ordered"*, which admits
 both readings. Per-line was chosen because bulk pricing reflects the packaging and handling
