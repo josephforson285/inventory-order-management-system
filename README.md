@@ -175,6 +175,7 @@ mysql < sql/01_schema.sql          # tables, constraints, indexes
 mysql < sql/02_triggers.sql        # automation and immutability
 mysql < sql/03_reference_data.sql  # tiers, categories, discount bands
 mysql < sql/04_procedures.sql      # the business API
+mysql < sql/05_views.sql           # reporting surface
 ```
 
 Placing an order, once products and a customer exist:
@@ -202,7 +203,7 @@ sql/
   02_triggers.sql        ✅  ledger application, immutability, totals, tier updates
   03_reference_data.sql  ✅  categories, tiers, discount bands
   04_procedures.sql      ✅  sp_place_order, sp_cancel_order, sp_replenish_stock
-  05_views.sql           ○   vw_order_summary, vw_low_stock, vw_customer_spending
+  05_views.sql           ✅  vw_order_summary, vw_low_stock, vw_customer_spending
   06_events.sql          ○   ev_replenish_stock
   07_seed.sql            ○   500 products, 10k customers, 100k orders
   08_reports.sql         ○   Phase 3 reporting queries
@@ -221,8 +222,9 @@ Analysis and modelling are complete and agreed. Implementation has begun.
 | Schema | ✅ built, idempotent, verified |
 | Triggers | ✅ 12 triggers + 1 helper routine, verified |
 | Procedures | ✅ `sp_place_order`, `sp_cancel_order`, `sp_replenish_stock`, verified |
-| Rules implemented | 30 of 40 fully, 9 partially — see the [matrix](docs/07-traceability-matrix.md) |
-| SQL scripts | 4 of 10 |
+| Views | ✅ 3 views, verified |
+| Rules implemented | 32 of 40 fully, 8 partially, 0 untouched — see the [matrix](docs/07-traceability-matrix.md) |
+| SQL scripts | 5 of 10 |
 
 Verified against MySQL 8.4.10. The schema builds from empty and re-runs cleanly, and every
 `CHECK` constraint has been shown to reject what it forbids — a stock movement whose sign

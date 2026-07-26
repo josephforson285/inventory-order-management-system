@@ -75,11 +75,11 @@ absence that is not written down is indistinguishable from an oversight.
 | Rule | Object | Type | File | Status |
 |---|---|---|---|---|
 | T-01 | `chk_customer_tiers_band` + `uq_customer_tiers_min_spend`; `sp_refresh_customer_tier` raises on a gap at runtime; `rec_tier_bands` still to come | `CONSTRAINT` + `VERIFIED` | `01_schema.sql` / `02_triggers.sql` / `09_reconciliation.sql` | ◐ |
-| T-02 | Spend calculation in `sp_refresh_customer_tier`; `vw_customer_spending` for reporting | *(definition)* | `02_triggers.sql` / `05_views.sql` | ◐ |
-| T-03 | `WHERE status <> 'CANCELLED'` in `sp_refresh_customer_tier`, and again in `vw_customer_spending` | `VERIFIED` | `02_triggers.sql` / `05_views.sql` | ◐ |
+| T-02 | `vw_customer_spending` is the definition; `sp_refresh_customer_tier` applies the same calculation | *(view definition)* | `05_views.sql` / `02_triggers.sql` | ✅ |
+| T-03 | `o.status <> 'CANCELLED'` in the LEFT JOIN's **ON** clause of `vw_customer_spending` (in WHERE it would drop zero-spend customers entirely), and in `sp_refresh_customer_tier` | `VERIFIED` | `05_views.sql` / `02_triggers.sql` | ✅ |
 | T-04 | Lowest band seeded at `min_spend = 0` in `03_reference_data.sql`; `COALESCE(SUM(...), 0)` in `sp_refresh_customer_tier` resolves a zero-spend customer | `CONSTRAINT` | `03_reference_data.sql` / `02_triggers.sql` | ✅ |
 | T-05 | `trg_orders_after_insert`, `trg_orders_after_update`, both calling `sp_refresh_customer_tier` | `TRIGGER` | `02_triggers.sql` | ✅ |
-| T-06 | `rec_customer_tiers` | `VERIFIED` | `09_reconciliation.sql` | ○ |
+| T-06 | `vw_customer_spending.tier_is_current` exposes the comparison directly; asserted in `tests/05_views_test.sql`. Reusable `rec_customer_tiers` still to come | `VERIFIED` | `05_views.sql` / `09_reconciliation.sql` | ◐ |
 
 **On T-05's cascade.** When an order header is inserted its totals are still zero, so the tier
 refresh at that moment is a no-op. The refresh that matters is triggered indirectly: inserting an
@@ -94,22 +94,29 @@ cancelled.
 
 | Status | Count |
 |---|---|
-| ✅ Implemented and verified | 30 |
-| ◐ Partially implemented | 9 |
-| ○ Designed, not yet built | 1 |
+| ✅ Implemented and verified | 32 |
+| ◐ Partially implemented | 8 |
+| ○ Designed, not yet built | 0 |
 | **Total** | **40** |
 
 Every rule has a named owner. Nothing is unassigned, and no object exists without a rule to
 justify it.
 
-The 30 complete rules comprise everything enforceable declaratively — constraints, types, and
-generated columns — plus the entire trigger and stored-procedure layer. The 9 partial rules are
-each waiting on one specific artefact: a privilege grant (I-03), a scheduled event (I-13), a
-reporting view (T-02, T-03), or a reusable reconciliation query (I-08, O-02, O-11, D-03, T-01).
-Several of those are already *asserted by tests* — what is missing is a named query a reviewer
-can run on demand, which is a real gap but a narrower one than "unimplemented".
+**Every rule now has a working implementation.** The 32 complete rules cover everything
+enforceable declaratively — constraints, types, generated columns — plus the entire trigger,
+stored-procedure, and view layer.
 
-Only T-06 remains untouched.
+The 8 partial rules are each waiting on exactly one artefact:
+
+| Waiting on | Rules |
+|---|---|
+| A privilege grant (`10_grants.sql`) | I-03 |
+| A scheduled event (`06_events.sql`) | I-13 |
+| A reusable reconciliation query (`09_reconciliation.sql`) | I-08, O-02, O-11, D-03, T-01, T-06 |
+
+Every one of those six reconciliation rules is already *asserted by a test* and passing. What is
+missing is a named query a reviewer can run on demand — a real gap, but a narrower one than
+"unimplemented".
 
 ## Enforcement mix
 

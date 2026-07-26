@@ -38,6 +38,22 @@
 --  agrees with the ledger BY CONSTRUCTION. Rule I-08's reconciliation query
 --  verifies that rather than hoping for it.
 --
+--  CALLER RESTRICTION — a ledger insert may not read `products` in the same
+--  statement. Because trg_inventory_logs_after_insert updates products, MySQL
+--  rejects any statement that reads products while inserting into
+--  inventory_logs (error 1442). So this fails:
+--
+--      INSERT INTO inventory_logs (product_id, movement_type, quantity_change)
+--      SELECT product_id, 'ADJUSTMENT', -(stock_quantity - 10) FROM products ...
+--
+--  and this works:
+--
+--      SELECT stock_quantity - 10 INTO @adj FROM products WHERE product_id = 4;
+--      INSERT INTO inventory_logs (...) VALUES (4, 'ADJUSTMENT', -@adj);
+--
+--  This is why sp_place_order stages its lines in a temporary table and inserts
+--  ledger rows from there. See ADR 0002.
+--
 --  Rules owned here: I-01 I-02 I-03 I-07 I-15 O-05 O-10 O-13 T-05
 --  Idempotent: every object is dropped before creation.
 -- =============================================================================

@@ -8,7 +8,12 @@
 --
 --      mysql < sql/01_schema.sql
 --      mysql < sql/02_triggers.sql
+--      mysql < sql/03_reference_data.sql
 --      mysql --force -t < tests/02_triggers_test.sql
+--
+--  Tiers and categories come from 03_reference_data.sql rather than being
+--  seeded here, so every test suite shares one prerequisite stack. Seeding them
+--  locally as well would collide on tier_name and min_spend.
 --
 --  --force is required so that expected failures do not abort the script.
 --
@@ -19,11 +24,7 @@
 USE inventory_order_management_sys;
 
 -- ---------- fixture ----------
-INSERT INTO customer_tiers (tier_name, min_spend, max_spend)
-  VALUES ('Bronze',0,2000),('Silver',2000,10000),('Gold',10000,NULL);
-INSERT INTO categories (category_name) VALUES ('Electronics');
-INSERT INTO discount_rules (min_quantity, max_quantity, discount_percent)
-  VALUES (10,50,5.00),(50,NULL,10.00);
+-- Tiers, categories, and discount bands come from 03_reference_data.sql.
 INSERT INTO customers (first_name,last_name,email,tier_id)
   VALUES ('Ama','Mensah','ama@example.com',1);
 
@@ -72,8 +73,9 @@ SELECT p.stock_quantity,
 
 SELECT '=== T-05: tier promotion on a large order (expect Silver) ===' AS t;
 INSERT INTO orders (customer_id) VALUES (1);
+-- quantity 100 falls in the third band [100, unbounded) at 15%
 INSERT INTO order_details (order_id,product_id,quantity,unit_price,discount_percent_applied,discount_rule_id)
-  VALUES (2,1,100,30.00,10.00,2);
+  VALUES (2,1,100,30.00,15.00,3);
 SELECT c.customer_id, ct.tier_name,
        (SELECT SUM(net_amount) FROM orders WHERE customer_id=1 AND status<>'CANCELLED') AS spend
   FROM customers c JOIN customer_tiers ct ON ct.tier_id=c.tier_id;

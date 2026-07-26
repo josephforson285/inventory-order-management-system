@@ -41,10 +41,10 @@ treating immutability as a convention.
 
 | Requirement | Satisfied by | Status |
 |---|---|---|
-| Order summaries per customer: date, total, item count | `vw_order_summary`, served by `idx_orders_customer_date` | ○ |
-| Report products low on stock, flagged below reorder point | `vw_low_stock`, over the `needs_reorder` generated column and its index | ◐ |
-| Categorise customers by total spending (Bronze / Silver / Gold) | `customer_tiers` seeded as reference data; `sp_refresh_customer_tier` resolves the band. Thresholds are rows, not a hardcoded `CASE` | ◐ |
-| Generate spending reports | `08_reports.sql` | ○ |
+| Order summaries per customer: date, total, item count | `vw_order_summary`. "Number of items" is ambiguous in the brief, so both readings are exposed: `line_count` (distinct products) and `item_count` (total units) | ✅ |
+| Report products low on stock, flagged below reorder point | `vw_low_stock`, filtering on the `needs_reorder` generated column so the query uses its index. `units_to_order` matches exactly what `sp_replenish_stock` would order | ✅ |
+| Categorise customers by total spending (Bronze / Silver / Gold) | `vw_customer_spending` joined to `customer_tiers`. Thresholds are rows, not a hardcoded `CASE`. Customers with no orders, and with only cancelled orders, both correctly resolve to the lowest tier rather than disappearing | ✅ |
+| Generate spending reports | `vw_customer_spending` carries spend, order counts, discount received, and tier; presentation queries in `08_reports.sql` to come | ◐ |
 | Apply bulk discounts based on quantity ordered | `discount_rules` resolved per detail line by `sp_place_order` from that line's own quantity (rule D-04) | ✅ |
 
 The low-stock requirement says products should be *"flagged"*. `products.needs_reorder` is
@@ -70,8 +70,8 @@ rules I-08, O-11, and T-06.
 
 | Requirement | Satisfied by | Status |
 |---|---|---|
-| View: customer name, order date, total amount, item count per order | `vw_order_summary` | ○ |
-| View: products low on stock needing reorder | `vw_low_stock` | ○ |
+| View: customer name, order date, total amount, item count per order | [`vw_order_summary`](../sql/05_views.sql) | ✅ |
+| View: products low on stock needing reorder | [`vw_low_stock`](../sql/05_views.sql) | ✅ |
 | Optimise queries for growth in customers, orders, and products | 12 indexes, each derived from a named query ([physical design §5](05-physical-design.md)), measured against ~100k seeded orders | ◐ |
 
 The optimisation requirement is the one most often answered by assertion. It is addressed here
@@ -87,7 +87,7 @@ forty rows proves nothing.
 |---|---|---|
 | Database schema — tables, relationships, constraints | [`sql/01_schema.sql`](../sql/01_schema.sql) | ✅ |
 | SQL queries — order placement, stock updates, inventory tracking, customer categorisation | [`sql/04_procedures.sql`](../sql/04_procedures.sql) done; `sql/08_reports.sql` to come | ◐ |
-| Views — order and stock summaries | `sql/05_views.sql` | ○ |
+| Views — order and stock summaries | [`sql/05_views.sql`](../sql/05_views.sql) — three views | ✅ |
 | Replenishment system — identify and replenish low stock | [`sql/04_procedures.sql`](../sql/04_procedures.sql) done; scheduling in `sql/06_events.sql` to come | ◐ |
 | Report summaries — order summaries and stock insights | `sql/08_reports.sql` | ○ |
 

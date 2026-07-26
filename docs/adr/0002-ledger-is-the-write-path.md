@@ -117,6 +117,38 @@ asserted by the final case in `tests/02_triggers_test.sql`.
   with an error rather than working. Mitigated by the error message naming the rule and the
   required alternative
 - One user variable exists in the design, requiring the justification above
+- **A ledger insert may not read `products` in the same statement.** Discovered by running it,
+  not by reading the manual — see below
+
+### The `INSERT ... SELECT FROM products` restriction
+
+Because `trg_inventory_logs_after_insert` updates `products`, any statement that *reads*
+`products` while inserting into `inventory_logs` fails:
+
+```sql
+-- MySQL error 1442: Can't update table 'products' in stored function/trigger
+-- because it is already used by the statement which invoked it.
+INSERT INTO inventory_logs (product_id, movement_type, quantity_change)
+SELECT product_id, 'ADJUSTMENT', -(stock_quantity - 10) FROM products WHERE product_id = 4;
+```
+
+MySQL forbids a trigger from modifying a table the invoking statement is already using. The fix
+is to separate the read from the write:
+
+```sql
+SELECT stock_quantity - 10 INTO @adj FROM products WHERE product_id = 4;
+INSERT INTO inventory_logs (product_id, movement_type, quantity_change)
+  VALUES (4, 'ADJUSTMENT', -@adj);
+```
+
+This is why `sp_place_order` stages its lines in a temporary table and inserts the ledger rows
+from *there* rather than from a join against `products`, and why `sp_cancel_order` reads
+`order_details`. Both were written that way for other reasons and are unaffected — but the
+constraint is real for anyone writing ad-hoc stock adjustments, so it is recorded here rather
+than left to be rediscovered.
+
+The restriction does not apply to `order_details`: that table's trigger updates `orders`, so an
+`INSERT ... SELECT` reading `products` into `order_details` is fine.
 
 **Neutral**
 
