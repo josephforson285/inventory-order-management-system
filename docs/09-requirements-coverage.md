@@ -24,11 +24,11 @@ only defensible if the original requirements are demonstrably still met in full.
 
 | Requirement | Satisfied by | Status |
 |---|---|---|
-| Design a way to process new orders | `sp_place_order` — a single transaction, rules I-10 and I-12 | ○ |
-| Deduct the correct quantity from stock | `sp_place_order`, with `SELECT … FOR UPDATE` in `product_id` order to prevent both overselling and deadlock | ○ |
+| Design a way to process new orders | `sp_place_order` — a single transaction, rules I-10 and I-12 | ✅ |
+| Deduct the correct quantity from stock | `sp_place_order` locks each product in ascending `product_id` order via a cursor, preventing both overselling and deadlock | ✅ |
 | Calculate the total order amount | `trg_order_details_after_insert` maintains `gross_amount` and `discount_amount`; `net_amount` is engine-generated | ✅ |
-| Update order details and track stock used per order | `order_details` plus `inventory_logs.order_id`, which links every movement back to its cause | ◐ |
-| Handle multiple products in a single order | `sp_place_order` takes a JSON array of lines. MySQL has no table-valued parameters, so this is the design fork the requirement implies | ○ |
+| Update order details and track stock used per order | `order_details` plus `inventory_logs.order_id`, which links every movement back to its cause | ✅ |
+| Handle multiple products in a single order | `sp_place_order` takes a JSON array expanded by `JSON_TABLE`. MySQL has no table-valued parameters, so this is the design fork the requirement implies. Repeated products are merged into one line | ✅ |
 | Record every stock change in an inventory log | Inverted: stock is changed *by* inserting into `inventory_logs`, and `trg_inventory_logs_after_insert` applies it. No write path can bypass the log because the log **is** the write path ([ADR 0002](adr/0002-ledger-is-the-write-path.md)) | ✅ |
 | Log stores when, which product, and how much | `created_at`, `product_id`, `quantity_change` — plus `balance_after` and `movement_type` beyond what was asked | ✅ |
 | Full history retrievable for auditing | Append-only: immutability triggers in place; the privilege half awaits `10_grants.sql` (rule I-03) | ◐ |
@@ -43,9 +43,9 @@ treating immutability as a convention.
 |---|---|---|
 | Order summaries per customer: date, total, item count | `vw_order_summary`, served by `idx_orders_customer_date` | ○ |
 | Report products low on stock, flagged below reorder point | `vw_low_stock`, over the `needs_reorder` generated column and its index | ◐ |
-| Categorise customers by total spending (Bronze / Silver / Gold) | `customer_tiers` as reference data plus `vw_customer_spending` — thresholds are rows, not a hardcoded `CASE` | ◐ |
+| Categorise customers by total spending (Bronze / Silver / Gold) | `customer_tiers` seeded as reference data; `sp_refresh_customer_tier` resolves the band. Thresholds are rows, not a hardcoded `CASE` | ◐ |
 | Generate spending reports | `08_reports.sql` | ○ |
-| Apply bulk discounts based on quantity ordered | `discount_rules` resolved per detail line by `sp_place_order` (rule D-04) | ◐ |
+| Apply bulk discounts based on quantity ordered | `discount_rules` resolved per detail line by `sp_place_order` from that line's own quantity (rule D-04) | ✅ |
 
 The low-stock requirement says products should be *"flagged"*. `products.needs_reorder` is
 literally that flag — a generated column, not a per-query expression, which is also what makes
@@ -55,9 +55,9 @@ the query indexable. See [physical design §5.1](05-physical-design.md).
 
 | Requirement | Satisfied by | Status |
 |---|---|---|
-| Replenish stock for products below the reorder point | `sp_replenish_stock`, topping up to `target_stock_level` (rule I-13) | ○ |
-| Ensure the inventory log reflects replenishment | Structurally unavoidable — a replenishment *is* a `REPLENISHMENT` ledger row, and stock follows from it | ◐ |
-| Automate stock updates after an order | Trigger-driven: the procedure writes the ledger, the trigger moves the stock. The procedure never touches `stock_quantity` | ◐ |
+| Replenish stock for products below the reorder point | `sp_replenish_stock`, topping up to `target_stock_level` (rule I-13). Self-limiting, so safe to schedule freely | ◐ |
+| Ensure the inventory log reflects replenishment | Structurally unavoidable — a replenishment *is* a `REPLENISHMENT` ledger row, and stock follows from it | ✅ |
+| Automate stock updates after an order | Trigger-driven: the procedure writes the ledger, the trigger moves the stock. The procedure never touches `stock_quantity` | ✅ |
 | Automate total amount calculation | `trg_order_details_after_insert` + the generated `net_amount` | ✅ |
 | Automate customer tier categorisation | `trg_orders_after_insert` / `trg_orders_after_update` call `sp_refresh_customer_tier` (rule T-05). Verified: promotion on a large order, demotion on cancellation | ✅ |
 | Minimise manual work while ensuring accuracy | `ev_replenish_stock` scheduled event, plus the reconciliation suite that proves the automation has not drifted | ○ |
@@ -86,9 +86,9 @@ forty rows proves nothing.
 | Deliverable | Artefact | Status |
 |---|---|---|
 | Database schema — tables, relationships, constraints | [`sql/01_schema.sql`](../sql/01_schema.sql) | ✅ |
-| SQL queries — order placement, stock updates, inventory tracking, customer categorisation | `sql/04_procedures.sql`, `sql/08_reports.sql` | ○ |
+| SQL queries — order placement, stock updates, inventory tracking, customer categorisation | [`sql/04_procedures.sql`](../sql/04_procedures.sql) done; `sql/08_reports.sql` to come | ◐ |
 | Views — order and stock summaries | `sql/05_views.sql` | ○ |
-| Replenishment system — identify and replenish low stock | `sql/04_procedures.sql`, `sql/06_events.sql` | ○ |
+| Replenishment system — identify and replenish low stock | [`sql/04_procedures.sql`](../sql/04_procedures.sql) done; scheduling in `sql/06_events.sql` to come | ◐ |
 | Report summaries — order summaries and stock insights | `sql/08_reports.sql` | ○ |
 
 ---

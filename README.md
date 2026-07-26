@@ -171,7 +171,26 @@ Requires MySQL 8.4+ with `event_scheduler = ON` and an `sql_mode` including
 than cosmetic.
 
 ```bash
-mysql < sql/01_schema.sql
+mysql < sql/01_schema.sql          # tables, constraints, indexes
+mysql < sql/02_triggers.sql        # automation and immutability
+mysql < sql/03_reference_data.sql  # tiers, categories, discount bands
+mysql < sql/04_procedures.sql      # the business API
+```
+
+Placing an order, once products and a customer exist:
+
+```sql
+CALL sp_place_order(1, '[{"product_id":3,"quantity":65},
+                         {"product_id":4,"quantity":5}]', @order_id);
+```
+
+That one call locks each product in a deadlock-safe order, rejects the whole order if any line is
+short of stock, resolves each line's discount band from its own quantity, snapshots the price
+charged, moves stock through the ledger, and re-files the customer's tier.
+
+```sql
+CALL sp_cancel_order(@order_id);      -- returns stock, re-files the tier
+CALL sp_replenish_stock(@n);          -- tops every low product up to target
 ```
 
 Scripts run in numerical order and are **idempotent** — the full sequence rebuilds the entire
@@ -181,8 +200,8 @@ system from nothing, which is how the tests work.
 sql/
   01_schema.sql          ✅  tables, constraints, indexes
   02_triggers.sql        ✅  ledger application, immutability, totals, tier updates
-  03_reference_data.sql  ○   categories, tiers, discount bands
-  04_procedures.sql      ○   sp_place_order, sp_cancel_order, sp_replenish_stock
+  03_reference_data.sql  ✅  categories, tiers, discount bands
+  04_procedures.sql      ✅  sp_place_order, sp_cancel_order, sp_replenish_stock
   05_views.sql           ○   vw_order_summary, vw_low_stock, vw_customer_spending
   06_events.sql          ○   ev_replenish_stock
   07_seed.sql            ○   500 products, 10k customers, 100k orders
@@ -201,8 +220,9 @@ Analysis and modelling are complete and agreed. Implementation has begun.
 | Documentation | 9 of 11 numbered documents, plus 2 ADRs |
 | Schema | ✅ built, idempotent, verified |
 | Triggers | ✅ 12 triggers + 1 helper routine, verified |
-| Rules implemented | 20 of 40 fully, 9 partially — see the [matrix](docs/07-traceability-matrix.md) |
-| SQL scripts | 2 of 10 |
+| Procedures | ✅ `sp_place_order`, `sp_cancel_order`, `sp_replenish_stock`, verified |
+| Rules implemented | 30 of 40 fully, 9 partially — see the [matrix](docs/07-traceability-matrix.md) |
+| SQL scripts | 4 of 10 |
 
 Verified against MySQL 8.4.10. The schema builds from empty and re-runs cleanly, and every
 `CHECK` constraint has been shown to reject what it forbids — a stock movement whose sign
@@ -215,3 +235,12 @@ creation; the ledger and its cached balance agree exactly across a mixed sequenc
 reject all four forbidden operations; and the tier cascade promotes a customer to Silver on a
 large order and demotes them again when it is cancelled — three levels of trigger, each firing
 the next.
+
+Order placement is verified end to end. A single call places a multi-product order, merging a
+repeated product into one line, resolving each line's discount band from its own quantity,
+snapshotting the price charged, deducting stock through the ledger, and moving the customer to
+the right tier. Six forbidden calls are rejected — insufficient stock on any one line rejects the
+whole order with nothing written, and unknown products, unknown customers, empty orders, retired
+products, and double cancellation all fail with rule-named errors. Cancellation returns stock
+exactly, and replenishment tops a product from 5 back to its target of 100 and then finds nothing
+on a second run.

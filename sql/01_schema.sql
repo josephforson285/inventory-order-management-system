@@ -85,6 +85,10 @@ CREATE TABLE customer_tiers (
 
   PRIMARY KEY (tier_id),
   CONSTRAINT uq_customer_tiers_name UNIQUE (tier_name),
+  -- rule T-01, partially enforced: two bands sharing a floor necessarily
+  -- overlap, so uniqueness rules out one whole class of overlap declaratively.
+  -- Full non-overlap still needs the reconciliation query.
+  CONSTRAINT uq_customer_tiers_min_spend UNIQUE (min_spend),
 
   -- rule T-01: a band's floor lies below its ceiling
   CONSTRAINT chk_customer_tiers_band
@@ -113,6 +117,9 @@ CREATE TABLE discount_rules (
                                               ON UPDATE CURRENT_TIMESTAMP,
 
   PRIMARY KEY (discount_rule_id),
+  -- rule D-03, partially enforced: same reasoning as customer_tiers. Two bands
+  -- sharing a floor overlap by definition.
+  CONSTRAINT uq_discount_rules_min_quantity UNIQUE (min_quantity),
 
   -- rule D-01
   CONSTRAINT chk_discount_rules_percent
