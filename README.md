@@ -185,6 +185,7 @@ mysql < sql/04_procedures.sql      # the business API
 mysql < sql/05_views.sql           # reporting surface
 mysql < sql/06_events.sql          # hourly replenishment
 mysql < sql/07_seed.sql            # 100k orders — takes about 90 seconds
+mysql < sql/08_reports.sql         # the reports
 mysql < sql/09_reconciliation.sql  # the proofs
 mysql < sql/10_grants.sql          # roles
 ```
@@ -223,7 +224,7 @@ sql/
   05_views.sql           ✅  vw_order_summary, vw_low_stock, vw_customer_spending
   06_events.sql          ✅  ev_replenish_stock, hourly
   07_seed.sql            ✅  500 products, 10k customers, 100k orders
-  08_reports.sql         ○   Phase 3 reporting queries
+  08_reports.sql         ✅  nine reports answering the six modelled questions
   09_reconciliation.sql  ✅  proofs that every cached value agrees with its source
   10_grants.sql          ✅  three roles; no passwords committed
 tests/                   ◐   negative tests: every constraint and trigger rejects what it should
@@ -243,8 +244,9 @@ Analysis and modelling are complete and agreed. Implementation has begun.
 | Seed data | ✅ 100,000 orders / 250,513 ledger rows, loaded in 91s with every trigger enabled |
 | Reconciliation | ✅ 8 checks, 0 violations at full volume |
 | Privilege model | ✅ 3 roles, 11/11 assertions |
+| Reports | ✅ 9 reports, ~10s at full volume |
 | Rules implemented | **40 of 40** — see the [matrix](docs/07-traceability-matrix.md) |
-| SQL scripts | 9 of 10 |
+| SQL scripts | **10 of 10** |
 
 Verified against MySQL 8.4.10. The schema builds from empty and re-runs cleanly, and every
 `CHECK` constraint has been shown to reject what it forbids — a stock movement whose sign

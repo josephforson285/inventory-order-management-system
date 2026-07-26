@@ -185,6 +185,46 @@ to net off refunds too, or a customer could return everything and stay Gold.
 
 ---
 
+## 5a. A smaller candidate the reports argued for
+
+Not an expansion so much as a correction, and the only item on this page that
+came from evidence rather than from foresight.
+
+The requirements specify a fixed `reorder_level` per product, and that is what
+was built. Report R9 in [`08_reports.sql`](../sql/08_reports.sql) compares sales
+velocity against stock held, and shows the assumption failing:
+
+| sku | stock | reorder_level | units/day | days of cover | flagged low |
+|---|---|---|---|---|---|
+| SKU-00046 | 60 | 5 | 36.29 | **1.7** | **no** |
+| SKU-00407 | 0 | 30 | 3.76 | 0.0 | yes |
+
+The first product has under two days of stock and is not flagged, because a
+reorder level of 5 is about three hours of its own sales. The second sells a
+tenth as fast and is flagged far earlier.
+
+A fixed threshold silently encodes an assumption about velocity. Where velocity
+varies tenfold across a catalogue, the threshold is wrong for most of it.
+
+**The change.** Replace the fixed threshold with a derived one:
+
+```
+reorder_point = target_cover_days × recent_daily_rate
+```
+
+`products.reorder_level` becomes a maintained column rather than a hand-set one,
+recalculated on a schedule from a rolling window of `order_details` — which makes
+it a third instance of the cache-and-reconcile pattern already used for stock and
+for customer tiers, with the same obligation to prove it has not drifted.
+
+**Why it was not done.** It departs from a stated requirement, and
+[ADR 0001](adr/0001-scope-spec-plus.md) commits to implementing the brief rather
+than improving on it unasked. Of everything on this page, this is the change with
+the best evidence behind it and the lowest cost — one column, one scheduled
+procedure, one reconciliation query.
+
+---
+
 ## 6. Sequencing
 
 Dependency order, if this were ever built:

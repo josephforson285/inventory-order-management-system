@@ -44,7 +44,7 @@ treating immutability as a convention.
 | Order summaries per customer: date, total, item count | `vw_order_summary`. "Number of items" is ambiguous in the brief, so both readings are exposed: `line_count` (distinct products) and `item_count` (total units) | ✅ |
 | Report products low on stock, flagged below reorder point | `vw_low_stock`, filtering on the `needs_reorder` generated column so the query uses its index. `units_to_order` matches exactly what `sp_replenish_stock` would order | ✅ |
 | Categorise customers by total spending (Bronze / Silver / Gold) | `vw_customer_spending` joined to `customer_tiers`. Thresholds are rows, not a hardcoded `CASE`. Customers with no orders, and with only cancelled orders, both correctly resolve to the lowest tier rather than disappearing | ✅ |
-| Generate spending reports | `vw_customer_spending` carries spend, order counts, discount received, and tier; presentation queries in `08_reports.sql` to come | ◐ |
+| Generate spending reports | R2 (top customers) and R4 (tier distribution with revenue share) in [`08_reports.sql`](../sql/08_reports.sql) | ✅ |
 | Apply bulk discounts based on quantity ordered | `discount_rules` resolved per detail line by `sp_place_order` from that line's own quantity (rule D-04) | ✅ |
 
 The low-stock requirement says products should be *"flagged"*. `products.needs_reorder` is
@@ -86,10 +86,10 @@ forty rows proves nothing.
 | Deliverable | Artefact | Status |
 |---|---|---|
 | Database schema — tables, relationships, constraints | [`sql/01_schema.sql`](../sql/01_schema.sql) | ✅ |
-| SQL queries — order placement, stock updates, inventory tracking, customer categorisation | [`sql/04_procedures.sql`](../sql/04_procedures.sql) done; `sql/08_reports.sql` to come | ◐ |
+| SQL queries — order placement, stock updates, inventory tracking, customer categorisation | [`sql/04_procedures.sql`](../sql/04_procedures.sql) and [`sql/08_reports.sql`](../sql/08_reports.sql) | ✅ |
 | Views — order and stock summaries | [`sql/05_views.sql`](../sql/05_views.sql) — three views | ✅ |
-| Replenishment system — identify and replenish low stock | [`sql/04_procedures.sql`](../sql/04_procedures.sql) done; scheduling in `sql/06_events.sql` to come | ◐ |
-| Report summaries — order summaries and stock insights | `sql/08_reports.sql` | ○ |
+| Replenishment system — identify and replenish low stock | [`sql/04_procedures.sql`](../sql/04_procedures.sql) + [`sql/06_events.sql`](../sql/06_events.sql), previewed by report R3 | ✅ |
+| Report summaries — order summaries and stock insights | [`sql/08_reports.sql`](../sql/08_reports.sql) — nine reports, one per question the conceptual model claimed the design could answer | ✅ |
 
 ---
 
