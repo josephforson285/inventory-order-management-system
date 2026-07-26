@@ -31,7 +31,7 @@ only defensible if the original requirements are demonstrably still met in full.
 | Handle multiple products in a single order | `sp_place_order` takes a JSON array expanded by `JSON_TABLE`. MySQL has no table-valued parameters, so this is the design fork the requirement implies. Repeated products are merged into one line | ✅ |
 | Record every stock change in an inventory log | Inverted: stock is changed *by* inserting into `inventory_logs`, and `trg_inventory_logs_after_insert` applies it. No write path can bypass the log because the log **is** the write path ([ADR 0002](adr/0002-ledger-is-the-write-path.md)) | ✅ |
 | Log stores when, which product, and how much | `created_at`, `product_id`, `quantity_change` — plus `balance_after` and `movement_type` beyond what was asked | ✅ |
-| Full history retrievable for auditing | Append-only: immutability triggers in place; the privilege half awaits `10_grants.sql` (rule I-03) | ◐ |
+| Full history retrievable for auditing | Append-only, enforced twice: immutability triggers, plus no role holding `UPDATE` or `DELETE` on `inventory_logs`. Verified by connecting as a restricted account (rule I-03) | ✅ |
 
 The audit requirement is worth a note. *"Full history"* is only true if the history cannot be
 edited, which is why rule I-03 makes `inventory_logs` append-only at two levels rather than
@@ -99,11 +99,12 @@ Delivered although not asked for, because each closes a gap the requirements lea
 
 | Addition | Gap it closes |
 |---|---|
-| Reconciliation suite (`sql/09_reconciliation.sql`) | The requirements ask for automated derived values but never for proof they stay correct. Three cached values, three proofs |
-| Negative test suite (`tests/`) | 12 tests asserting every `CHECK` rejects what it should. A constraint nobody has tried to violate is an untested claim |
+| Reconciliation suite (`sql/09_reconciliation.sql`) | The requirements ask for automated derived values but never for proof they stay correct. Eight named checks, 0 violations at full volume, runnable as one query |
+| Negative test suite (`tests/`) | Four suites: 9 constraint/trigger denials, 6 procedure rejections, the view edge cases, and 11 privilege assertions run as restricted accounts. A constraint nobody has tried to violate is an untested claim |
 | `movement_type` reason codes | The requirements ask *what* changed; a reason code answers *why*, which is what makes the log auditable rather than merely complete |
 | `balance_after` | Makes point-in-time stock reconstruction O(1) instead of a sum over history |
 | Concurrency handling | The requirements never mention simultaneous orders. Without row locking, two customers can each buy the last unit |
+| Privilege model (`sql/10_grants.sql`) | Three roles. The application cannot write any table directly — it places orders through a procedure running with its definer's rights, so rules I-02 and I-12 cannot be circumvented even in principle |
 | Assumptions register | 30 entries recording every question the requirements leave unanswered, and how each was resolved |
 
 ## Deviations

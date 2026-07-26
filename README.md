@@ -118,7 +118,7 @@ constraint is what makes the table a complete stock history rather than merely a
 
 ## Design decisions worth reading
 
-Five choices shape everything else:
+Six choices shape everything else:
 
 **The inventory log is the source of truth; `stock_quantity` is a cache.** Stock is a *balance*
 over an immutable ledger of movements, exactly as an accounting system treats an account. So the
@@ -142,8 +142,15 @@ migration and a redeploy. → [ADR 0001](docs/adr/0001-scope-spec-plus.md)
 
 **Enforced is distinguished from verified.** A `CHECK` constraint makes a rule impossible to
 violate. A reconciliation query only detects violations afterwards. Six of the 40 rules are
-cross-table aggregates that no constraint can express — they are labelled `VERIFIED`, not quietly
-presented as enforced. → [traceability matrix](docs/07-traceability-matrix.md)
+cross-table aggregates that no constraint can express — they are labelled `VERIFIED` rather than
+quietly presented as enforced, and each has a named query in `09_reconciliation.sql` that returns
+zero at full volume. → [traceability matrix](docs/07-traceability-matrix.md)
+
+**Privileges back up the triggers.** A trigger stops a rule being broken by accident; it does not
+stop someone who can drop it. So the two rules that matter most are enforced twice — no role
+holds column-level `UPDATE` on `products.stock_quantity`, and no role holds `UPDATE` or `DELETE`
+on `inventory_logs` at all. The application cannot even `INSERT` into `orders`; it places orders
+by calling a procedure that runs with its definer's rights. → [`sql/10_grants.sql`](sql/10_grants.sql)
 
 ## Documentation
 
@@ -178,6 +185,14 @@ mysql < sql/04_procedures.sql      # the business API
 mysql < sql/05_views.sql           # reporting surface
 mysql < sql/06_events.sql          # hourly replenishment
 mysql < sql/07_seed.sql            # 100k orders — takes about 90 seconds
+mysql < sql/09_reconciliation.sql  # the proofs
+mysql < sql/10_grants.sql          # roles
+```
+
+Check the system's health at any time:
+
+```sql
+SELECT * FROM rec_summary;   -- every violations count must be 0
 ```
 
 Placing an order, once products and a customer exist:
@@ -209,8 +224,8 @@ sql/
   06_events.sql          ✅  ev_replenish_stock, hourly
   07_seed.sql            ✅  500 products, 10k customers, 100k orders
   08_reports.sql         ○   Phase 3 reporting queries
-  09_reconciliation.sql  ○   proofs that every cached value agrees with its source
-  10_grants.sql          ○   revoke UPDATE/DELETE on inventory_logs
+  09_reconciliation.sql  ✅  proofs that every cached value agrees with its source
+  10_grants.sql          ✅  three roles; no passwords committed
 tests/                   ◐   negative tests: every constraint and trigger rejects what it should
 ```
 
@@ -226,8 +241,10 @@ Analysis and modelling are complete and agreed. Implementation has begun.
 | Procedures | ✅ `sp_place_order`, `sp_cancel_order`, `sp_replenish_stock`, verified |
 | Views | ✅ 3 views, verified |
 | Seed data | ✅ 100,000 orders / 250,513 ledger rows, loaded in 91s with every trigger enabled |
-| Rules implemented | 33 of 40 fully, 7 partially, 0 untouched — see the [matrix](docs/07-traceability-matrix.md) |
-| SQL scripts | 7 of 10 |
+| Reconciliation | ✅ 8 checks, 0 violations at full volume |
+| Privilege model | ✅ 3 roles, 11/11 assertions |
+| Rules implemented | **40 of 40** — see the [matrix](docs/07-traceability-matrix.md) |
+| SQL scripts | 9 of 10 |
 
 Verified against MySQL 8.4.10. The schema builds from empty and re-runs cleanly, and every
 `CHECK` constraint has been shown to reject what it forbids — a stock movement whose sign

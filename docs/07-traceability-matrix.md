@@ -17,16 +17,16 @@ rule it broke — `Rule I-03: inventory_logs is append-only` rather than `produc
 | Rule | Object | Type | File | Status |
 |---|---|---|---|---|
 | I-01 | `INT UNSIGNED` + `chk_products_stock_non_negative` + `STRICT_TRANS_TABLES`; `trg_inventory_logs_before_insert` rejects the movement first with a rule-named error | `CONSTRAINT` + `TRIGGER` | `01_schema.sql` / `02_triggers.sql` | ✅ |
-| I-02 | `trg_inventory_logs_after_insert`, guarded by `trg_products_before_insert` and `trg_products_before_update` — see [ADR 0002](adr/0002-ledger-is-the-write-path.md) | `TRIGGER` | `02_triggers.sql` | ✅ |
-| I-03 | `trg_inventory_logs_before_update`, `trg_inventory_logs_before_delete` | `TRIGGER` | `02_triggers.sql` | ◐ |
+| I-02 | `trg_inventory_logs_after_insert`, guarded by `trg_products_before_insert` and `trg_products_before_update`, plus column-level `UPDATE` on `products` that omits `stock_quantity` — see [ADR 0002](adr/0002-ledger-is-the-write-path.md) | `TRIGGER` + `PRIVILEGE` | `02_triggers.sql` / `10_grants.sql` | ✅ |
+| I-03 | `trg_inventory_logs_before_update`, `trg_inventory_logs_before_delete`; roles granted `INSERT` but never `UPDATE`/`DELETE` | `TRIGGER` + `PRIVILEGE` | `02_triggers.sql` / `10_grants.sql` | ✅ |
 | I-04 | `inventory_logs.movement_type NOT NULL ENUM` | `CONSTRAINT` | `01_schema.sql` | ✅ |
 | I-05 | `chk_inventory_logs_sign_matches_type` | `CONSTRAINT` | `01_schema.sql` | ✅ |
 | I-06 | `chk_inventory_logs_change_non_zero` | `CONSTRAINT` | `01_schema.sql` | ✅ |
-| I-07 | `balance_after`, computed by `trg_inventory_logs_before_insert` and copied into `products` | `TRIGGER` | `02_triggers.sql` | ✅ |
-| I-08 | Asserted in `tests/04_procedures_test.sql` (every product, diff 0); reusable `rec_stock_ledger` still to come | `VERIFIED` | `09_reconciliation.sql` | ◐ |
+| I-07 | `balance_after`, computed by `trg_inventory_logs_before_insert` and copied into `products`; `rec_balance_chain` proves the running balance is unbroken | `TRIGGER` + `VERIFIED` | `02_triggers.sql` / `09_reconciliation.sql` | ✅ |
+| I-08 | `rec_stock_ledger` — 0 violations across 500 products / 250,513 ledger rows | `VERIFIED` | `09_reconciliation.sql` | ✅ |
 | I-09 | `ENGINE=InnoDB` + explicit `START TRANSACTION` / `ROLLBACK` in `sp_place_order` | `CONSTRAINT` | `01_schema.sql` / `04_procedures.sql` | ✅ |
 | I-10 | `SELECT … FOR UPDATE` in `trg_inventory_logs_before_insert` (any caller); explicit cursor loop in ascending `product_id` order in `sp_place_order` and `sp_cancel_order` (deadlock avoidance) | `PROCEDURE` + `TRIGGER` | `02_triggers.sql` / `04_procedures.sql` | ✅ |
-| I-11 | `sp_cancel_order` writes `CANCELLATION` movements; stock returns via the ledger | `PROCEDURE` | `04_procedures.sql` | ✅ |
+| I-11 | `sp_cancel_order` writes `CANCELLATION` movements; `rec_cancelled_stock` proves each cancelled order's movements net to zero | `PROCEDURE` + `VERIFIED` | `04_procedures.sql` / `09_reconciliation.sql` | ✅ |
 | I-12 | `sp_place_order` locks, validates every line, then writes — nothing mutates until all lines are satisfiable | `PROCEDURE` | `04_procedures.sql` | ✅ |
 | I-13 | `sp_replenish_stock` tops up to `target_stock_level`, scheduled hourly by `ev_replenish_stock` | `PROCEDURE` | `04_procedures.sql` / `06_events.sql` | ✅ |
 | I-14 | `chk_products_target_above_reorder` | `CONSTRAINT` | `01_schema.sql` | ✅ |
@@ -42,7 +42,7 @@ constrain a sufficiently privileged user. The second half — revoking `UPDATE` 
 | Rule | Object | Type | File | Status |
 |---|---|---|---|---|
 | O-01 | `fk_orders_customers` (`ON DELETE RESTRICT`) | `CONSTRAINT` | `01_schema.sql` | ✅ |
-| O-02 | `sp_place_order` writes header and details atomically; `rec_orphan_orders` detects violations | `VERIFIED` | `04_procedures.sql` / `09_reconciliation.sql` | ◐ |
+| O-02 | `sp_place_order` writes header and details atomically; `rec_orphan_orders` — 0 violations across 100,000 orders | `VERIFIED` | `04_procedures.sql` / `09_reconciliation.sql` | ✅ |
 | O-03 | `orders.status ENUM('PLACED','CANCELLED')` + `chk_orders_cancelled_at_consistent` | `CONSTRAINT` | `01_schema.sql` | ✅ |
 | O-04 | `sp_cancel_order` rejects any order not in `PLACED` | `PROCEDURE` | `04_procedures.sql` | ✅ |
 | O-05 | `trg_order_details_before_update`, `trg_order_details_before_delete` | `TRIGGER` | `02_triggers.sql` | ✅ |
@@ -51,7 +51,7 @@ constrain a sufficiently privileged user. The second half — revoking `UPDATE` 
 | O-08 | `order_details.unit_price NOT NULL`, snapshotted from `products` by `sp_place_order` | `CONSTRAINT` | `01_schema.sql` / `04_procedures.sql` | ✅ |
 | O-09 | `gross_amount`, `discount_amount`, `net_amount` as `STORED` generated columns | `GENERATED` | `01_schema.sql` | ✅ |
 | O-10 | `trg_order_details_after_insert` — incremental, since details are immutable | `TRIGGER` | `02_triggers.sql` | ✅ |
-| O-11 | Asserted in `tests/04_procedures_test.sql` (every order, diff 0.00); reusable `rec_order_totals` still to come | `VERIFIED` | `09_reconciliation.sql` | ◐ |
+| O-11 | `rec_order_totals` — 0 violations across 100,000 orders | `VERIFIED` | `09_reconciliation.sql` | ✅ |
 | O-12 | `DECIMAL(12,2)` / `DECIMAL(14,2)` throughout | `CONSTRAINT` | `01_schema.sql` | ✅ |
 | O-13 | `trg_orders_before_insert` — a trigger because MySQL forbids `NOW()` in a `CHECK` | `TRIGGER` | `02_triggers.sql` | ✅ |
 
@@ -61,7 +61,7 @@ constrain a sufficiently privileged user. The second half — revoking `UPDATE` 
 |---|---|---|---|---|
 | D-01 | `chk_discount_rules_percent` + `chk_order_details_discount_percent` | `CONSTRAINT` | `01_schema.sql` | ✅ |
 | D-02 | `chk_discount_rules_band` | `CONSTRAINT` | `01_schema.sql` | ✅ |
-| D-03 | `uq_discount_rules_min_quantity` rules out shared floors; band-tiling checks in `03_reference_data.sql`; `rec_discount_bands` still to come | `VERIFIED` | `01_schema.sql` / `03_reference_data.sql` / `09_reconciliation.sql` | ◐ |
+| D-03 | `uq_discount_rules_min_quantity` rules out shared floors; `rec_discount_bands` checks gaps, overlaps, and multiple unbounded bands | `CONSTRAINT` + `VERIFIED` | `01_schema.sql` / `09_reconciliation.sql` | ✅ |
 | D-04 | `sp_place_order` resolves each detail row against `discount_rules` from that row's own quantity, highest matching band first | `PROCEDURE` | `04_procedures.sql` | ✅ |
 | D-05 | `order_details.discount_percent_applied` + `discount_rule_id`, both written by `sp_place_order` | `CONSTRAINT` | `01_schema.sql` / `04_procedures.sql` | ✅ |
 | D-06 | **No object** — enforced by omission, recorded so it is not added later | *(documented)* | `02-business-rules.md` | ✅ |
@@ -74,12 +74,12 @@ absence that is not written down is indistinguishable from an oversight.
 
 | Rule | Object | Type | File | Status |
 |---|---|---|---|---|
-| T-01 | `chk_customer_tiers_band` + `uq_customer_tiers_min_spend`; `sp_refresh_customer_tier` raises on a gap at runtime; `rec_tier_bands` still to come | `CONSTRAINT` + `VERIFIED` | `01_schema.sql` / `02_triggers.sql` / `09_reconciliation.sql` | ◐ |
+| T-01 | `chk_customer_tiers_band` + `uq_customer_tiers_min_spend`; `sp_refresh_customer_tier` raises on a gap at runtime; `rec_tier_bands` checks tiling, the zero floor, and multiple unbounded bands | `CONSTRAINT` + `VERIFIED` | `01_schema.sql` / `02_triggers.sql` / `09_reconciliation.sql` | ✅ |
 | T-02 | `vw_customer_spending` is the definition; `sp_refresh_customer_tier` applies the same calculation | *(view definition)* | `05_views.sql` / `02_triggers.sql` | ✅ |
 | T-03 | `o.status <> 'CANCELLED'` in the LEFT JOIN's **ON** clause of `vw_customer_spending` (in WHERE it would drop zero-spend customers entirely), and in `sp_refresh_customer_tier` | `VERIFIED` | `05_views.sql` / `02_triggers.sql` | ✅ |
 | T-04 | Lowest band seeded at `min_spend = 0` in `03_reference_data.sql`; `COALESCE(SUM(...), 0)` in `sp_refresh_customer_tier` resolves a zero-spend customer | `CONSTRAINT` | `03_reference_data.sql` / `02_triggers.sql` | ✅ |
-| T-05 | `trg_orders_after_insert`, `trg_orders_after_update`, both calling `sp_refresh_customer_tier` | `TRIGGER` | `02_triggers.sql` | ✅ |
-| T-06 | `vw_customer_spending.tier_is_current` exposes the comparison directly; asserted in `tests/05_views_test.sql`. Reusable `rec_customer_tiers` still to come | `VERIFIED` | `05_views.sql` / `09_reconciliation.sql` | ◐ |
+| T-05 | `trg_orders_after_insert`, `trg_orders_after_update`, both calling `sp_refresh_customer_tier`; `ims_app` has no `UPDATE` on `customers.tier_id` | `TRIGGER` + `PRIVILEGE` | `02_triggers.sql` / `10_grants.sql` | ✅ |
+| T-06 | `rec_customer_tiers` — 0 violations across 10,000 customers, including after the tier bands were re-derived and every cache recomputed | `VERIFIED` | `05_views.sql` / `09_reconciliation.sql` | ✅ |
 
 **On T-05's cascade.** When an order header is inserted its totals are still zero, so the tier
 refresh at that moment is a no-op. The refresh that matters is triggered indirectly: inserting an
@@ -94,28 +94,25 @@ cancelled.
 
 | Status | Count |
 |---|---|
-| ✅ Implemented and verified | 33 |
-| ◐ Partially implemented | 7 |
+| ✅ Implemented and verified | **40** |
+| ◐ Partially implemented | 0 |
 | ○ Designed, not yet built | 0 |
 | **Total** | **40** |
 
 Every rule has a named owner. Nothing is unassigned, and no object exists without a rule to
 justify it.
 
-**Every rule now has a working implementation.** The 33 complete rules cover everything
-enforceable declaratively — constraints, types, generated columns — plus the entire trigger,
-stored-procedure, and view layer.
+**All forty rules are implemented and verified.** Nothing is partial and nothing is outstanding.
 
-The 7 partial rules are each waiting on exactly one artefact:
+The six `VERIFIED` rules are not weaker for being verified rather than enforced — each has a
+named query in `09_reconciliation.sql` returning violations, and each returns **zero** against
+the full seeded dataset: 500 products, 10,000 customers, 100,000 orders, 250,000 order details,
+250,513 ledger rows. The whole suite runs as `SELECT * FROM rec_summary` in about six seconds.
 
-| Waiting on | Rules |
-|---|---|
-| A privilege grant (`10_grants.sql`) | I-03 |
-| A reusable reconciliation query (`09_reconciliation.sql`) | I-08, O-02, O-11, D-03, T-01, T-06 |
-
-Every one of those six reconciliation rules is already *asserted by a test* and passing. What is
-missing is a named query a reviewer can run on demand — a real gap, but a narrower one than
-"unimplemented".
+Four rules are enforced twice over, by a trigger *and* by a privilege. Triggers make those rules
+hard to break by accident; grants make them hard to break on purpose. Rule I-02 is the clearest
+case: a trigger rejects a direct write to `stock_quantity`, and separately no role holds the
+column-level `UPDATE` that would let it try.
 
 ## Enforcement mix
 
