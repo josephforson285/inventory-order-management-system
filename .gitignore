@@ -1,0 +1,40 @@
+# ---------------------------------------------------------------------------
+# Credentials — never commit. MySQL access for this project is configured in
+# ~/.my.cnf, deliberately outside the repository. If a script ever needs
+# credentials, add a .env.example with placeholders and keep the real .env here.
+# ---------------------------------------------------------------------------
+*.cnf
+.my.cnf
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ---------------------------------------------------------------------------
+# Database artefacts — the sql/ directory is source and IS tracked. These
+# patterns are deliberately narrow so they cannot swallow sql/*.sql.
+# ---------------------------------------------------------------------------
+dumps/
+backups/
+*.dump.sql
+*.sql.gz
+*.sql.bak
+*.log
+
+# ---------------------------------------------------------------------------
+# Scratch work
+# ---------------------------------------------------------------------------
+tmp/
+scratch/
+*.tmp
+*~
+
+# ---------------------------------------------------------------------------
+# Editor and OS
+# ---------------------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
