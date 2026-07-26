@@ -164,7 +164,7 @@ by calling a procedure that runs with its definer's rights. → [`sql/10_grants.
 | [05 — Physical design](docs/05-physical-design.md) | Engine, charset, type rationale, query-driven index strategy |
 | 06 — Data dictionary | *planned* |
 | [07 — Traceability matrix](docs/07-traceability-matrix.md) | All 40 rules → their enforcement objects |
-| 08 — Performance | *planned* — `EXPLAIN ANALYZE` before and after, at ~100k orders |
+| [08 — Performance](docs/08-performance.md) | `EXPLAIN ANALYZE` measured at full volume, including what the indexes cost and one prediction they refuted |
 | [09 — Requirements coverage](docs/09-requirements-coverage.md) | Every requirement → the artefact satisfying it |
 | [10 — Future architecture](docs/10-future-architecture.md) | The 19-table production system, scoped out deliberately, with migration paths |
 | [ADR 0001](docs/adr/0001-scope-spec-plus.md) | Scope decision — spec-plus over production-grade |
@@ -236,7 +236,7 @@ Analysis and modelling are complete and agreed. Implementation has begun.
 
 | | Progress |
 |---|---|
-| Documentation | 9 of 11 numbered documents, plus 2 ADRs |
+| Documentation | 10 of 11 numbered documents, plus 2 ADRs |
 | Schema | ✅ built, idempotent, verified |
 | Triggers | ✅ 12 triggers + 1 helper routine, verified |
 | Procedures | ✅ `sp_place_order`, `sp_cancel_order`, `sp_replenish_stock`, verified |
