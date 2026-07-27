@@ -11,7 +11,7 @@ Built against **MySQL 8.4**.
 Manage products, customers, and orders such that stock is correctly deducted when orders are
 placed, every inventory movement is auditable, low stock is detected and replenished
 automatically, and customers can be segmented by spend. The full brief is preserved verbatim in
-[`docs/00-requirements.md`](docs/00-requirements.md) and other  [`documentations/`](doc/).
+[`docs/00-requirements.md`](docs/00-requirements.md) and other  [`documentations/`](docs/).
 
 ## Approach
 
@@ -114,7 +114,7 @@ Analysis and modelling are complete and agreed. Implementation has begun.
 
 | | Progress |
 |---|---|
-| Documentation | **11 of 11** numbered documents, plus 2 ADRs |
+| Documentation | **8**  documents, plus 1 ADRs |
 | Schema |  built, idempotent, verified |
 | Triggers |  12 triggers + 1 helper routine, verified |
 | Procedures |  `sp_place_order`, `sp_cancel_order`, `sp_replenish_stock`, verified |
