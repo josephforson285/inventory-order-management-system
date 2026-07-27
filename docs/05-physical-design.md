@@ -5,6 +5,14 @@ Where the [logical model](04-logical-model.md) decided *what* is stored, this do
 justified by a query the [requirements](00-requirements.md) actually ask for; none is added
 speculatively.
 
+![Physical ERD — eight tables and eight foreign keys, with types and nullability](img/erd.png)
+
+Generated from the live schema, so it shows what was actually built rather than what was
+planned. The [conceptual model](03-conceptual-model.md) carries the same eight relationships
+without implementation detail; one thing it states that no foreign key can express is that an
+order must have **at least one** line — that is rule O-02, proven by `rec_orphan_orders`
+rather than by the schema.
+
 ---
 
 ## 1. Target environment
