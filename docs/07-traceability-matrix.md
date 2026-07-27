@@ -1,13 +1,10 @@
 # Traceability Matrix
 
 Each of the 40 rules in the [business rules catalogue](02-business-rules.md) mapped to the
-database object that owns it. This is the bridge between the analysis and the implementation:
-a rule with no object is unimplemented, and an object serving no rule is unjustified.
-
+database object that owns it.  
 **Legend:** ✅ implemented and verified · ◐ partially implemented · ○ designed, not yet built
 
-Every constraint, trigger, and routine name below is the real identifier in the schema, not a
-description. Objects are explicitly named precisely so that a violation reports which business
+Every constraint, trigger, and routine name below is the real identifier in the schema. Objects are explicitly named precisely so that a violation reports which business
 rule it broke — `Rule I-03: inventory_logs is append-only` rather than `products_chk_2`.
 
 ---
@@ -17,7 +14,7 @@ rule it broke — `Rule I-03: inventory_logs is append-only` rather than `produc
 | Rule | Object | Type | File | Status |
 |---|---|---|---|---|
 | I-01 | `INT UNSIGNED` + `chk_products_stock_non_negative` + `STRICT_TRANS_TABLES`; `trg_inventory_logs_before_insert` rejects the movement first with a rule-named error | `CONSTRAINT` + `TRIGGER` | `01_schema.sql` / `02_triggers.sql` | ✅ |
-| I-02 | `trg_inventory_logs_after_insert`, guarded by `trg_products_before_insert` and `trg_products_before_update`, plus column-level `UPDATE` on `products` that omits `stock_quantity` — see [ADR 0002](adr/0002-ledger-is-the-write-path.md) | `TRIGGER` + `PRIVILEGE` | `02_triggers.sql` / `10_grants.sql` | ✅ |
+| I-02 | `trg_inventory_logs_after_insert`, guarded by `trg_products_before_insert` and `trg_products_before_update`, plus column-level `UPDATE` on `products` that omits `stock_quantity`   | `TRIGGER` + `PRIVILEGE` | `02_triggers.sql` / `10_grants.sql` | ✅ |
 | I-03 | `trg_inventory_logs_before_update`, `trg_inventory_logs_before_delete`; roles granted `INSERT` but never `UPDATE`/`DELETE` | `TRIGGER` + `PRIVILEGE` | `02_triggers.sql` / `10_grants.sql` | ✅ |
 | I-04 | `inventory_logs.movement_type NOT NULL ENUM` | `CONSTRAINT` | `01_schema.sql` | ✅ |
 | I-05 | `chk_inventory_logs_sign_matches_type` | `CONSTRAINT` | `01_schema.sql` | ✅ |
@@ -32,10 +29,10 @@ rule it broke — `Rule I-03: inventory_logs is append-only` rather than `produc
 | I-14 | `chk_products_target_above_reorder` | `CONSTRAINT` | `01_schema.sql` | ✅ |
 | I-15 | `trg_products_before_insert` — a product cannot be created holding stock | `TRIGGER` | `02_triggers.sql` | ✅ |
 
-**I-03 is partial by design.** The triggers are in place and tested, but a trigger does not
+<!-- **I-03 is partial by design.** The triggers are in place and tested, but a trigger does not
 constrain a sufficiently privileged user. The second half — revoking `UPDATE` and `DELETE` on
 `inventory_logs`, and column-level `UPDATE` on `products.stock_quantity` — lives in
-`10_grants.sql`.
+`10_grants.sql`. -->
 
 ## Section II — Order lifecycle
 
@@ -81,12 +78,12 @@ absence that is not written down is indistinguishable from an oversight.
 | T-05 | `trg_orders_after_insert`, `trg_orders_after_update`, both calling `sp_refresh_customer_tier`; `ims_app` has no `UPDATE` on `customers.tier_id` | `TRIGGER` + `PRIVILEGE` | `02_triggers.sql` / `10_grants.sql` | ✅ |
 | T-06 | `rec_customer_tiers` — 0 violations across 10,000 customers, including after the tier bands were re-derived and every cache recomputed | `VERIFIED` | `05_views.sql` / `09_reconciliation.sql` | ✅ |
 
-**On T-05's cascade.** When an order header is inserted its totals are still zero, so the tier
+<!-- **On T-05's cascade.** When an order header is inserted its totals are still zero, so the tier
 refresh at that moment is a no-op. The refresh that matters is triggered indirectly: inserting an
 order detail updates the order's totals, and that update fires `trg_orders_after_update`, which
 recalculates the tier against real figures. Three levels of trigger, verified end to end — a
 customer was promoted to Silver at a spend of 2,996.40 and demoted to Bronze when the order was
-cancelled.
+cancelled. -->
 
 ---
 
@@ -99,20 +96,9 @@ cancelled.
 | ○ Designed, not yet built | 0 |
 | **Total** | **40** |
 
-Every rule has a named owner. Nothing is unassigned, and no object exists without a rule to
-justify it.
+ 
 
-**All forty rules are implemented and verified.** Nothing is partial and nothing is outstanding.
-
-The six `VERIFIED` rules are not weaker for being verified rather than enforced — each has a
-named query in `09_reconciliation.sql` returning violations, and each returns **zero** against
-the full seeded dataset: 500 products, 10,000 customers, 100,000 orders, 250,000 order details,
-250,513 ledger rows. The whole suite runs as `SELECT * FROM rec_summary` in about six seconds.
-
-Four rules are enforced twice over, by a trigger *and* by a privilege. Triggers make those rules
-hard to break by accident; grants make them hard to break on purpose. Rule I-02 is the clearest
-case: a trigger rejects a direct write to `stock_quantity`, and separately no role holds the
-column-level `UPDATE` that would let it try.
+**All forty rules are implemented and verified.**  
 
 ## Enforcement mix
 
@@ -126,15 +112,3 @@ column-level `UPDATE` that would let it try.
 | *(view definition)* | 1 |
 | *(documented only)* | 1 |
 
-The shape of this distribution is itself a design statement. Constraints outnumber procedures
-close to three to one, meaning most guarantees are **impossible to violate** rather than merely
-*enforced by code that happens to run*. The six procedure-owned rules are exactly the ones that
-genuinely need transactional logic — deterministic lock ordering, validating every line before
-writing any, all-or-nothing rollback, and resolving a discount band per row. Nothing a constraint
-or trigger could hold was left to a procedure.
-
-The 6 `VERIFIED` rules are the honest residue: cross-table aggregates that no constraint can
-express. Each gets a reconciliation query and a test rather than a claim. One of them, I-08, is
-additionally true *by construction* since [ADR 0002](adr/0002-ledger-is-the-write-path.md) —
-`stock_quantity` is copied from `balance_after` rather than calculated separately, so the query
-verifies a structural property instead of reconciling two independent computations.

@@ -28,7 +28,7 @@ A distinction worth making explicitly.
 | # | Rule | Owner | Type | Traces to |
 |---|---|---|---|---|
 | I-01 | Stock may never fall below zero | `UNSIGNED` + `CHECK (stock_quantity >= 0)`; `trg_inventory_logs_before_insert` rejects the movement first, with an error naming this rule | `CONSTRAINT` | Phase 2 |
-| I-02 | Stock cannot change except by inserting into `inventory_logs` — the ledger insert applies the movement to `products` | `trg_inventory_logs_after_insert`, with `trg_products_before_insert` and `trg_products_before_update` as guards. See [ADR 0002](adr/0002-ledger-is-the-write-path.md) | `TRIGGER` | Phase 2 |
+| I-02 | Stock cannot change except by inserting into `inventory_logs` — the ledger insert applies the movement to `products` | `trg_inventory_logs_after_insert`, with `trg_products_before_insert` and `trg_products_before_update` as guards. | `TRIGGER` | Phase 2 |
 | I-03 | `inventory_logs` is append-only | `BEFORE UPDATE` / `BEFORE DELETE` triggers that `SIGNAL`, plus revoked `UPDATE`/`DELETE` grants | `TRIGGER` + `PRIVILEGE` | Phase 2 |
 | I-04 | Every log row carries a reason code | `movement_type NOT NULL ENUM('SALE','RETURN','REPLENISHMENT','ADJUSTMENT','CANCELLATION','INITIAL_LOAD')` | `CONSTRAINT` | Phase 2 |
 | I-05 | The sign of `quantity_change` must agree with `movement_type` — a `SALE` cannot be positive, a `REPLENISHMENT` cannot be negative | `CHECK` with a `CASE` expression | `CONSTRAINT` | Phase 2 |

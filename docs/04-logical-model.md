@@ -1,75 +1,24 @@
 # Logical Data Model
 
-The logical model adds attributes, keys, and cardinality to the
+The logical model with attributes, keys, and cardinality to the
 [conceptual model](03-conceptual-model.md), and resolves every structural question before any
-DDL is written. Types are indicative rather than final; the physical decisions — storage
-engine, character set, index layout — belong to
-[`05-physical-design.md`](05-physical-design.md).
+DDL is written. 
 
----
+ 
+## The diagram 
+ ![Entity relationship diagram — eight entities and the eight relationships between them](img/erd.png)
 
-## 1. The central distinction: redundancy versus history
 
-Seven attributes in this model store a value that could, in principle, be calculated from
-somewhere else. Treating them as one category would be a mistake. They divide into two kinds,
-and confusing them is the most common modelling error in order systems.
+## Normalisation walkthrough
 
-### Kind A — Temporal facts. Not redundancy at all.
-
-| Attribute | Could be "derived" from | Why deriving it is wrong |
-|---|---|---|
-| `order_details.unit_price` | `products.unit_price` | The product's price today is not the price this order was sold at. Joining live means every historical invoice silently re-prices whenever a product's price changes. |
-| `order_details.discount_percent_applied` | `discount_rules` | Same failure. Editing a discount band would retroactively alter what past customers were charged. |
-
-These look like violations of normalisation. They are not. Normalisation forbids storing the
-**same fact** twice; these store a **different fact** — not *"what does this product cost"*
-but *"what was this product sold for on this date"*. The source is a different point in time,
-so it is a different value. There is no functional dependency to eliminate.
-
-A useful test: if the value must remain unchanged when the reference data changes, it is a
-temporal fact and must be stored.
-
-### Kind B — Caches. Genuine, deliberate denormalisation.
-
-| Attribute | Derivable from | Maintained by | Proven by |
-|---|---|---|---|
-| `products.stock_quantity` | `SUM(inventory_logs.quantity_change)` | Procedures, logged by trigger | Rule I-08 |
-| `inventory_logs.balance_after` | Sum of all prior movements for that product | I-02 trigger | Rule I-08 |
-| `orders.gross_amount`, `orders.discount_amount` | `SUM` over `order_details` | O-10 trigger | Rule O-11 |
-| `customers.tier_id` | `vw_customer_spending` against `customer_tiers` | T-05 trigger | Rule T-06 |
-
-These *are* denormalisations. Each is stored because recomputing it on every read is the exact
-cost [Phase 5](00-requirements.md) asks us to remove. Each therefore carries an obligation:
-a named owner that maintains it, and a reconciliation query that proves it has not drifted.
-A cache without a proof is just a bug that has not surfaced yet.
-
-### Kind C — Engine-owned. Cannot drift.
-
-All three money columns on `order_details` — `gross_amount`, `discount_amount`, `net_amount` —
-are `STORED` generated columns, as is `orders.net_amount`. Note that `orders.gross_amount` and
-`orders.discount_amount` are **not**: those aggregate across rows, which no generated column
-can express, so they belong to the O-10 trigger and to Kind B above.
-
-A generated column is arithmetic on values within its own row, so MySQL computes it and no
-trigger can write it incorrectly. Where a derived value can be pushed down to the engine, it
-is — which is precisely why only *aggregates across rows* are left to triggers.
-
----
-
-## 2. Normalisation walkthrough
-
-The model is in **third normal form**, with the Kind B exceptions above recorded as
-deliberate departures.
+The model is in **third normal form**.
 
 ### First normal form — atomic attributes
 
 - The requirements specify a customer *"name"*. Stored as `first_name` and `last_name` rather
   than one field, so that sorting and reporting by surname is possible without string
   surgery.
-- `phone` holds a single number. A customer with two numbers would require a repeating group,
-  which 1NF forbids — the correct fix is a `customer_phones` table. Scoped out under
-  [ADR 0001](adr/0001-scope-spec-plus.md) as the requirements describe one *"phone number"*.
-  Recorded so the limitation is visible rather than accidental.
+- `phone` holds a single number. 
 - No comma-separated lists anywhere. Product-to-category is a foreign key, not a text field.
 
 ### Second normal form — no partial key dependencies
@@ -83,7 +32,7 @@ deliberate departures.
   constraint alongside it. The surrogate simplifies foreign keys and application code; the
   unique constraint preserves the business rule (O-06) that a product appears at most once per
   order. Dropping the unique constraint in favour of the surrogate alone would silently permit
-  duplicate lines — a common oversight.
+  duplicate lines.
 
 ### Third normal form — no transitive dependencies
 
@@ -95,8 +44,7 @@ exists:
 | `product_id → category_name` — the category's name depends on the category, not the product. Storing it on `products` means a rename must touch every product row, and misspellings create phantom categories. | `categories` table |
 | `customer_id → tier_name, min_spend` — a tier's name and thresholds depend on the tier, not the customer. Storing them on `customers` means changing a threshold requires rewriting customer rows. | `customer_tiers` table |
 
-`customers.tier_id` remains as a foreign key. That is not a transitive dependency — it is a
-cached derived value (Kind B), owned by T-05 and proven by T-06.
+`customers.tier_id` remains as a foreign key. That is not a transitive dependency.
 
 ### Keys: surrogate and natural
 
@@ -223,54 +171,9 @@ Constraint: `UNIQUE (order_id, product_id)` (O-06).
 | `is_active` | `BOOLEAN` | No | Default true |
 
 ---
+ 
 
-## 4. Design notes
-
-**`quantity_change` is signed, so it is the one integer that is not `UNSIGNED`.**
-A movement out of stock is negative; a movement in is positive. This is what makes rule I-08
-a single `SUM` rather than a conditional aggregation, and it is why I-05 exists to stop the
-sign contradicting the reason code.
-
-**`inventory_logs.order_id` is a conditional relationship.**
-`SALE` and `CANCELLATION` movements must carry an order; `REPLENISHMENT`, `ADJUSTMENT`, and
-`INITIAL_LOAD` must not. This is expressible as a `CHECK`:
-
-```
-CHECK (
-  (movement_type IN ('SALE','CANCELLATION') AND order_id IS NOT NULL)
-  OR
-  (movement_type IN ('REPLENISHMENT','ADJUSTMENT','INITIAL_LOAD') AND order_id IS NULL)
-)
-```
-
-Modelling it this way is what makes the log a full stock history rather than a sales history —
-and the constraint stops the two categories being mixed up.
-
-**Products are retired, never deleted.**
-Every foreign key into `products` is `ON DELETE RESTRICT`, so a product with order history
-cannot be removed without destroying that history. `is_active` marks it unsellable while
-leaving the past intact. The same reasoning applies to customers: `ON DELETE RESTRICT` on
-`orders.customer_id` means a customer with orders cannot be deleted.
-
-**Rounding is applied per line, not per order.**
-`order_details.discount_amount` rounds to two decimal places inside the generated column. Rounding once at
-the order level instead would leave `orders.discount_amount` differing from the sum of its
-lines by fractions of a pesewa — and rule O-11 would fail. Rounding at the lowest level and
-summing upward keeps the totals exactly reconcilable.
-
-**`NULL` as unbounded, in two places.**
-`customer_tiers.max_spend` and `discount_rules.max_quantity` are nullable, where `NULL` means
-"no upper limit". The alternative — a sentinel such as `999999999` — invites arithmetic
-mistakes and eventually gets exceeded. Band-resolution logic therefore reads
-`… AND (max_spend IS NULL OR spend < max_spend)`.
-
-**`orders.net_amount` is generated, but `gross_amount` is not.**
-`net = gross − discount` is arithmetic within one row, so the engine owns it. Gross and
-discount are aggregates over `order_details`, which no generated column can express — hence the
-O-10 trigger. This split keeps the trigger as small as possible: it maintains two columns, and
-the third follows for free.
-
-## 5. Column additions beyond ADR 0001
+## 5. Column additions  
 
 [ADR 0001](adr/0001-scope-spec-plus.md) lists table-level additions. Four column-level
 additions were made while resolving this model, each recorded here:

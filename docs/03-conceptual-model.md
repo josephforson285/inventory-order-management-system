@@ -18,15 +18,22 @@ Eight entities, grouped by the business function they serve.
 
 ## Diagram
 
-![Entity relationship diagram — eight entities and the eight relationships between them](img/erd.png)
 
-Generated from the live schema. The relationships are the subject here; the column names and
-types shown belong to the [physical design](05-physical-design.md).
+```mermaid
+erDiagram
+    CATEGORY      ||--o{ PRODUCT       : classifies
+    CUSTOMER_TIER ||--o{ CUSTOMER      : segments
+    CUSTOMER      ||--o{ ORDER         : places
+    ORDER         ||--|{ ORDER_DETAIL  : "consists of"
+    PRODUCT       ||--o{ ORDER_DETAIL  : "is sold as"
+    PRODUCT       ||--o{ INVENTORY_LOG : "stock moves recorded in"
+    DISCOUNT_RULE ||--o{ ORDER_DETAIL  : "granted discount to"
+    ORDER         ||--o{ INVENTORY_LOG : "caused stock movement"
+```
 
-One relationship the diagram cannot express: an order must have **at least one** line. A
-foreign key stops a line pointing at a missing order, but nothing at the schema level stops an
-order having no lines — that is rule O-02, proven by `rec_orphan_orders` instead. It is stated
-in the table below.
+<!-- ![Entity relationship diagram — eight entities and the eight relationships between them](img/erd.png) -->
+
+ 
 
 ## Relationships in business language
 

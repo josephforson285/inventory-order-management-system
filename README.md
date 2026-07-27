@@ -125,7 +125,7 @@ over an immutable ledger of movements, exactly as an accounting system treats an
 application **writes to the ledger** — `INSERT INTO inventory_logs` — and a trigger applies the
 movement to stock. Writing stock directly is rejected. That makes the audit trail structurally
 unavoidable rather than merely conventional.
-→ [logical model §1](docs/04-logical-model.md), [ADR 0002](docs/adr/0002-ledger-is-the-write-path.md)
+→ [logical model §1](docs/04-logical-model.md)
 
 **Storing the price on the order line is not redundancy.** `order_details.unit_price` records
 what the customer was charged on that date, which is a *different fact* from what the product
@@ -157,18 +157,14 @@ by calling a procedure that runs with its definer's rights. → [`sql/10_grants.
 | Document | Contents |
 |---|---|
 | [00 — Requirements](docs/00-requirements.md) | Source brief, verbatim. The immutable anchor |
-| [01 — Assumptions](docs/01-assumptions.md) | 30 entries: every question the brief leaves open, and how it was resolved |
 | [02 — Business rules](docs/02-business-rules.md) | 40 rules in 4 sections, each with a single named owner |
 | [03 — Conceptual model](docs/03-conceptual-model.md) | 8 entities, relationships in business language |
 | [04 — Logical model](docs/04-logical-model.md) | Attributes, keys, 3NF walkthrough, defended denormalisations |
 | [05 — Physical design](docs/05-physical-design.md) | Engine, charset, type rationale, query-driven index strategy |
-| [06 — Data dictionary](docs/06-data-dictionary.md) | Every column, its type, and why it exists; generated from the built database |
 | [07 — Traceability matrix](docs/07-traceability-matrix.md) | All 40 rules → their enforcement objects |
 | [08 — Performance](docs/08-performance.md) | `EXPLAIN ANALYZE` measured at full volume, including what the indexes cost and one prediction they refuted |
-| [09 — Requirements coverage](docs/09-requirements-coverage.md) | Every requirement → the artefact satisfying it |
 | [10 — Future architecture](docs/10-future-architecture.md) | The 19-table production system, scoped out deliberately, with migration paths |
 | [ADR 0001](docs/adr/0001-scope-spec-plus.md) | Scope decision — spec-plus over production-grade |
-| [ADR 0002](docs/adr/0002-ledger-is-the-write-path.md) | Why stock is written to the ledger, not to the product row |
 
 ## Running it
 
