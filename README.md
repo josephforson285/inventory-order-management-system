@@ -76,10 +76,7 @@ Or run the whole sequence in one command, from the repository root:
 mysql < scripts/run-all.sql
 ```
 
-That script sources the ten files above in order. It leaves `07_seed.sql` commented out, so
-the build is structural and fast; uncomment that line for the 100k-order dataset. Because
-`01_schema.sql` opens with `DROP TABLE`, run it against a fresh database — it deletes any
-data already there.
+
 
 Check the system's health at any time:
 
