@@ -1,16 +1,7 @@
-# Inventory and Order Management System — Source Requirements
+# Inventory and Order Management System 
 
-> **Status:** Verbatim source requirement document as issued for the lab.
-> This file is the immutable anchor for the project. It is **not** edited to match
-> design decisions. Where our implementation extends, reinterprets, or deliberately
-> departs from this document, the deviation is recorded in
-> [`01-assumptions.md`](01-assumptions.md) and traced in
-> [`09-requirements-coverage.md`](09-requirements-coverage.md).
->
-> *Transcription note: the source file contained mis-encoded em-dash characters
-> (`â`). These have been restored to `—`. No wording was altered.*
 
----
+
 
 ## Project Overview: Problem Statement
 

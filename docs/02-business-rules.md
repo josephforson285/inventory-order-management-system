@@ -1,35 +1,23 @@
 # Business Rules Catalogue
 
-Every rule the system guarantees, with the single mechanism that owns it.
+Every rule the system guarantees, with the  mechanism that owns it.
 
-Governing principle:
-
-> **Every invariant has exactly one owner.** Where two mechanisms enforce the same rule they
-> either conflict or duplicate — and duplication in stock accounting produces silently wrong
-> numbers rather than errors.
-
-A second principle, applied consistently in Sections II and III:
-
-> **Snapshot anything that can change.** A value that describes a past event must be stored
-> on that event, never looked up live. Otherwise history silently rewrites itself when
-> reference data changes.
+ 
 
 ## Enforcement legend
 
-A distinction worth making explicitly, because it is often blurred:
+A distinction worth making explicitly.
 
 | Type | Meaning | Bypassable by direct DML? |
 |---|---|---|
 | `CONSTRAINT` | Declaratively impossible to violate | No |
-| `GENERATED` | Computed by the engine; cannot drift | No |
+| `GENERATED` | Computed by the engine | No |
 | `TRIGGER` | Enforced automatically on any DML | No |
 | `PRIVILEGE` | Enforced by the grant system | No |
 | `PROCEDURE` | Enforced inside the transaction boundary | **Yes** — hence never the sole owner of a correctness invariant |
 | `VERIFIED` | Not expressible as a constraint; detected after the fact by a reconciliation query and covered by a test | n/a |
 
-`VERIFIED` is not a weaker form of `CONSTRAINT` — it is the honest classification for rules
-that span rows or tables in ways SQL cannot declare. Labelling them as such, rather than
-implying they are enforced, is deliberate.
+ 
 
 ---
 
@@ -54,51 +42,6 @@ implying they are enforced, is deliberate.
 | I-13 | Replenishment triggers when `stock_quantity <= reorder_level` and tops stock up to `target_stock_level` | `sp_replenish_stock`, scheduled by `EVENT` | `PROCEDURE` | Phase 4 |
 | I-14 | `target_stock_level` must exceed `reorder_level` | `CHECK (target_stock_level > reorder_level)` | `CONSTRAINT` | Phase 4 |
 | I-15 | No stock may exist without a corresponding log entry — opening stock is loaded as `INITIAL_LOAD` | `trg_products_before_insert` rejects any product created with non-zero stock | `TRIGGER` | Phase 2 |
-
-### Notes on contested rules
-
-**I-02 — why the ledger is the write path, not the product row.**
-The obvious design has the application update `products.stock_quantity` while a trigger records
-what happened. It cannot work. A trigger sees only the row before and the row after, so a drop
-from 100 to 88 is indistinguishable between a sale and a damaged-goods write-off — yet the
-`movement_type` it must supply determines whether an `order_id` is *required* or *forbidden*
-(`chk_inventory_logs_order_presence`). A wrong guess does not produce a slightly inaccurate audit
-entry; it fails the customer's order.
-
-Inverting the direction makes the intent part of the write. Stock is changed by inserting into
-`inventory_logs`, and `trg_inventory_logs_after_insert` copies the resulting balance into
-`products`. Two guards make that the only path: `trg_products_before_insert` rejects a product
-created with opening stock, and `trg_products_before_update` rejects any direct write to
-`stock_quantity`.
-
-The binding consequence inverts too: **stored procedures insert into `inventory_logs` and never
-update `products.stock_quantity` themselves.** A procedure that does both would double-count.
-Full reasoning, and the two options rejected along the way, are in
-[ADR 0002](adr/0002-ledger-is-the-write-path.md).
-
-**I-08 — why this is verified rather than enforced.**
-The rule compares a scalar column against an aggregate over another table. No `CHECK`
-constraint can express that, and enforcing it by trigger would mean re-aggregating the
-entire log on every write. The correct engineering answer is a reconciliation query run as a
-test, not a constraint that cannot exist. I-07's `balance_after` gives a second, cheaper
-check: the newest log row's `balance_after` must equal the product's current
-`stock_quantity`.
-
-Since [ADR 0002](adr/0002-ledger-is-the-write-path.md), `stock_quantity` is *copied* from
-`balance_after` rather than calculated independently, so the two agree **by construction**. The
-reconciliation query therefore verifies a structural property rather than hoping that two
-separate calculations arrived at the same answer.
-
-**I-12 — deviation from the source document.**
-The source requirements do not state what happens when stock is insufficient. All-or-nothing
-rejection was chosen over partial fulfilment: partial fills require line-level status,
-complicate the order total, and imply a backorder concept the requirements never mention.
-
-**I-13 — deviation from the source document.**
-The requirements say *"any product with stock below its reorder point"* (strictly below).
-This system triggers at **`<=`** — reaching the reorder level is itself the signal to
-reorder, which is standard inventory practice. Recorded here because it is a deliberate
-departure from the wording, not an off-by-one error.
 
 ---
 
@@ -125,23 +68,12 @@ departure from the wording, not an off-by-one error.
 ### Notes
 
 **O-03 — why only two states.**
-Because stock is deducted at placement (I-12) and no reservation model exists, there is no
+Because stock is deducted at placement (I-12) and no reservation model exists yet, there is no
 provisional state for an order to occupy — nothing about a placed order is pending. States
 such as `SHIPPED` or `DELIVERED` would never be exercised by any procedure in this system,
 and an unexercised lifecycle is decoration. `CANCELLED` exists solely because cancellation
 must return stock.
 
-**O-09 — why a generated column rather than a trigger.**
-A detail row's three money columns are arithmetic on values in that same row, which makes them
-the one set of derived values the engine can own outright. A `STORED` generated column
-cannot drift: there is no trigger to write incorrectly and no reconciliation query needed.
-Where the engine can enforce an invariant, it should. Contrast O-10, where the aggregate
-spans rows and a trigger is unavoidable.
-
-**O-13 — why a trigger rather than a `CHECK`.**
-MySQL prohibits non-deterministic functions inside `CHECK` constraints, so
-`CHECK (order_date <= NOW())` is rejected at DDL time. The rule remains enforceable, just
-not declaratively. Documented because the choice looks arbitrary otherwise.
 
 ---
 
@@ -158,31 +90,7 @@ not declaratively. Documented because the choice looks arbitrary otherwise.
 | D-05 | The discount percentage applied to a line is stored on the line | `order_details.discount_percent_applied NOT NULL` | `CONSTRAINT` | Phase 3 |
 | D-06 | Customer tiers never affect price | No mechanism — enforced by omission; recorded so it is not added later | *(documented)* | Phase 3 |
 
-### Notes
 
-**D-04 — resolving an ambiguity in the source document.**
-The requirements say *"apply bulk discounts based on quantity ordered — if a customer orders
-in large quantities"*, which admits two readings. Given a rule of *10+ units → 5% off* and an
-order of 12 units of Product A plus 8 units of Product B:
-
-- **Per line** (chosen): Product A qualifies at 12 units and is discounted; Product B does
-  not qualify at 8 units and is charged in full.
-- **Per order**: total quantity is 20, so every line including Product B is discounted.
-
-Per line was chosen because bulk pricing reflects the packaging and handling economics of a
-specific product. The per-order reading rewards large mixed baskets, which is a basket
-promotion rather than a bulk discount.
-
-**D-05 — why the applied percentage is stored.**
-The same reasoning as O-08. If the line's discount were recomputed from `discount_rules` at
-read time, every historical order would silently re-price whenever the discount bands were
-edited. The rate actually granted is a fact about a past transaction and belongs on it.
-
-**D-06 — why tiers are explicitly excluded from pricing.**
-The source document uses tiers only for categorisation and spending reports (Phase 3,
-Customer insights) and for automated categorisation (Phase 4). It never states that a
-higher tier earns a discount. A tier-based discount was considered and rejected as scope
-creep; this rule exists to record that the omission is intentional.
 
 ---
 
@@ -201,22 +109,4 @@ creep; this rule exists to record that the omission is intentional.
 
 ### Notes
 
-**T-05 / T-06 — the cache-and-reconcile pattern, applied a second time.**
-Two designs were available. A pure view recomputes each customer's total from every order on
-every read: always correct, but it re-aggregates the whole orders table each time — precisely
-the cost Phase 5 asks us to eliminate. A stored column is instant to read but can drift out
-of step with reality.
 
-The chosen design keeps both: `customers.tier_id` is a **cache**, `vw_customer_spending` is
-the **definition of truth**, and T-06 is the query that proves they agree. This is the same
-structure as `products.stock_quantity` (cache) against `inventory_logs` (truth) with I-08 as
-the proof. Reusing one pattern for both derived values is deliberate — it means the system
-has one story about derived data rather than two.
-
-It also satisfies both requirements at once: Phase 4's *"automate customer tier
-categorization"* is the T-05 trigger, and Phase 5's concern for growth is the cached column.
-
-**T-04 — the edge case that breaks naive implementations.**
-A customer with no orders has no rows in `orders`, so an `INNER JOIN` drops them from the
-tier report entirely. They must still resolve to the lowest tier, which requires both a
-`LEFT JOIN` and a lowest band whose floor is 0.
